@@ -113,10 +113,10 @@ def score_candidate(
 
     if season != -1 or episode != -1:
         if candidate["season"] == season and candidate["episode"] == episode:
-            score += 40
+            score += 50
             reasons.append("season+ep exact fit: 50")
         elif candidate["season"] == season or candidate["episode"] == episode:
-            score += 20
+            score += 25
             reasons.append("season or ep matched: 25")
         else:
             score -= 5
