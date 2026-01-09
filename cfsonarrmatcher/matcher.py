@@ -152,7 +152,7 @@ def score_candidate(
 
 
 def clean_text(text: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9\s]", "", text).lower()
+    return re.sub(r"[^a-zA-Z0-9\s]", " ", text).lower()
 
 
 def clean_sonarr_data(sonarr_data: list[dict]) -> list[dict]:
