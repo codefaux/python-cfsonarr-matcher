@@ -201,11 +201,13 @@ def match_title_to_sonarr_episode(
             else:
                 reason += "; no airdate bonus"
 
-        # TODO: Reimplement Monitored bonus
-        # if score > 70 and is_monitored_episode(
-        #     candidate["series_id"], candidate["season"], candidate["episode"]
-        # ):
-        #     score += 1
+        if candidate.get("monitored", False) is True:
+            score += 1
+            reason += "; monitored episode"
+
+        if candidate.get("hasFile", True) is False:
+            score += 1
+            reason += "; no file"
 
         if score > best_score:
             best_match = candidate
