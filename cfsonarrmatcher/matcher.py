@@ -71,7 +71,9 @@ def extract_episode_hint(title: str) -> Tuple[int, int]:
         match = re.search(pattern, title, re.IGNORECASE)
         if match:
             results = match.groupdict()
-            return int(results["season_hint"] or -1), int(results["episode_hint"] or -1)
+            hint_s = int(results.get("season_hint") or -1)
+            hint_e = int(results.get("episode_hint") or -1)
+            return hint_s, hint_e
     return -1, -1
 
 
