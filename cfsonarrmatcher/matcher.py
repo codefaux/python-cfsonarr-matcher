@@ -3,7 +3,6 @@ from collections import Counter
 from datetime import date, datetime
 from typing import Dict, List, Tuple
 
-from cfsonarr import is_monitored_episode
 from dateutil import parser as dateparser
 from rapidfuzz import fuzz
 from rapidfuzz import utils as fuzzutils
@@ -201,11 +200,11 @@ def match_title_to_sonarr_episode(
             else:
                 reason += "; no airdate bonus"
 
-        # Monitored bonus
-        if score > 70 and is_monitored_episode(
-            candidate["series_id"], candidate["season"], candidate["episode"]
-        ):
-            score += 1
+        # TODO: Reimplement Monitored bonus
+        # if score > 70 and is_monitored_episode(
+        #     candidate["series_id"], candidate["season"], candidate["episode"]
+        # ):
+        #     score += 1
 
         if score > best_score:
             best_match = candidate

@@ -4,8 +4,6 @@
 #
 #    pip-compile requirements.in
 #
-cfsonarr @ git+https://github.com/codefaux/python-cfsonarr@main
-    # via -r requirements.in
 fauxlogger @ git+https://github.com/codefaux/python-fauxlogger@main
     # via -r requirements.in
 python-dateutil==2.9.0.post0
