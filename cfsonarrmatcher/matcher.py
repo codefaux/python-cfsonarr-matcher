@@ -59,6 +59,7 @@ def time_distance_score(
 def extract_episode_hint(title: str) -> Tuple[int, int]:
     """Attempts to parse season and episode numbers from the title."""
     patterns = [
+        r"[Ss](\d+)[\W_]-[\W_][Ee]?(\d+)",  # S5 - 6
         r"[Ss](\d+)[Ee](\d+)",  # S2E3
         r"[Ss]eason[^\d]*(\d+)[^\d]+Episode[^\d]*(\d+)",  # Season 2 Episode 3
         r"[Ss](\d+)[^\d]+Ep(?:isode)?[^\d]*(\d+)",  # S2 Ep 3
