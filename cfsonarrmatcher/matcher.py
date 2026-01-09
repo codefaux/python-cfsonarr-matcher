@@ -175,7 +175,7 @@ def match_title_to_sonarr_episode(
     cleaned_data = clean_sonarr_data(sonarr_data)
 
     token_freq = build_token_frequencies(cleaned_data)
-    season, episode = extract_episode_hint(cleaned_title)
+    season, episode = extract_episode_hint(main_title)
 
     best_match = None
     best_score = -1
