@@ -65,6 +65,7 @@ def extract_episode_hint(title: str) -> Tuple[int, int]:
         r"S(?P<season_hint>\d+)[^\d]+Ep(?:isode)?[^\d]*(?P<episode_hint>\d+)",  # S2 Ep 3
         r"Episode[^\d]*(?P<episode_hint>\d+)",  # Episode 3
         r"Ep[^\d]*(?P<episode_hint>\d+)",  # Ep 3
+        r"^[^\d]+S(?:eason)?[^\d]?(?P<season_hint>\d+)[^\d]*\(?E?\d+-E?\d+\)?",  # S5 (01-12)  | Season 3 (E01-12) | Season4 (e01-E12)
     ]
     for pattern in patterns:
         match = re.search(pattern, title, re.IGNORECASE)
