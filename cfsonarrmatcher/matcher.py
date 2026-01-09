@@ -59,21 +59,18 @@ def time_distance_score(
 def extract_episode_hint(title: str) -> Tuple[int, int]:
     """Attempts to parse season and episode numbers from the title."""
     patterns = [
-        r"S(\d+)[\W_]-[\W_]E?(\d+)",  # S5 - 6
-        r"S(\d+)E(\d+)",  # S2E3
-        r"Season[^\d]*(\d+)[^\d]+Episode[^\d]*(\d+)",  # Season 2 Episode 3
-        r"S(\d+)[^\d]+Ep(?:isode)?[^\d]*(\d+)",  # S2 Ep 3
-        r"Episode[^\d]*(\d+)",  # Episode 3
-        r"Ep[^\d]*(\d+)",  # Ep 3
+        r"S(?P<season_hint>\d+)[\W_]-[\W_]E?(?P<episode_hint>\d+)",  # S5 - 6
+        r"S(?P<season_hint>\d+)E(?P<episode_hint>\d+)",  # S2E3
+        r"Season[^\d]*(?P<season_hint>\d+)[^\d]+Episode[^\d]*(?P<episode_hint>\d+)",  # Season 2 Episode 3
+        r"S(?P<season_hint>\d+)[^\d]+Ep(?:isode)?[^\d]*(?P<episode_hint>\d+)",  # S2 Ep 3
+        r"Episode[^\d]*(?P<episode_hint>\d+)",  # Episode 3
+        r"Ep[^\d]*(?P<episode_hint>\d+)",  # Ep 3
     ]
     for pattern in patterns:
         match = re.search(pattern, title, re.IGNORECASE)
         if match:
-            groups = match.groups()
-            if len(groups) == 2:
-                return int(groups[0]), int(groups[1])
-            elif len(groups) == 1:
-                return -1, int(groups[0])
+            results = match.groupdict()
+            return int(results["season_hint"] or -1), int(results["episode_hint"] or -1)
     return -1, -1
 
 
