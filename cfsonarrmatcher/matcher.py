@@ -77,48 +77,77 @@ def extract_episode_hint(title: str) -> Tuple[int, int]:
     return -1, -1
 
 
-def build_token_frequencies(sonarr_data: List[Dict]) -> Dict[str, int]:
+def build_token_frequencies(token_pool: List[str]) -> Dict[str, int]:
     token_counts = Counter()
-    for entry in sonarr_data:
-        tokens = fuzzutils.default_process(entry["title"]).split()
+    for entry in token_pool:
+        tokens = fuzzutils.default_process(entry).split()
         token_counts.update(tokens)
     return token_counts
 
 
+def inv_freq(freq: int) -> float:
+    import math
+
+    return 1 / math.log1p(freq)
+
+
+def normalize_token(token: str) -> str:
+    # Strip leading zeros for purely numeric tokens
+    if token.isdigit():
+        return str(int(token))
+    return token
+
+
 def compute_weighted_overlap(
-    input_tokens: set, candidate_tokens: set, freq_map: Dict[str, int]
+    input_tokens: set,
+    candidate_tokens: set,
+    candidate_freq_map: Dict[str, int],
+    input_freq_map: Dict[str, int] | None = None,
 ) -> float:
     if not candidate_tokens:
         return 0.0
 
-    total_weight = 0
-    overlap_weight = 0
+    normalized_input_tokens = {normalize_token(t): t for t in input_tokens}
+
+    total_weight = 0.0
+    overlap_weight = 0.0
 
     for token in candidate_tokens:
-        # Inverse frequency weight: more rare = more important
-        weight = 1 / freq_map.get(token, 1)
-        total_weight += weight
-        if token in input_tokens:
-            overlap_weight += weight
+        cand_weight = inv_freq(candidate_freq_map.get(token, 1))
+        total_weight += cand_weight
 
-    return overlap_weight / total_weight if total_weight > 0 else 0
+        norm_token = normalize_token(token)
+
+        if norm_token in normalized_input_tokens:
+            matched_input_token = normalized_input_tokens[norm_token]
+
+            input_weight = (
+                inv_freq(input_freq_map.get(matched_input_token, 1))
+                if input_freq_map is not None
+                else 1.0
+            )
+            overlap_weight += cand_weight * input_weight
+
+    return overlap_weight / total_weight if total_weight > 0 else 0.0
 
 
 def score_candidate(
     main_title: str,
     season: int,
     episode: int,
-    candidate: Dict,
-    token_freq: Dict[str, int],
+    candidate_pool: Dict,
+    candidate_token_freq: Dict[str, int],
+    input_token_freq: Dict[str, int] | None = None,
+    series_title: str | None = None,
 ) -> Tuple[int, str]:
     score = 0
     reasons = []
 
     if season != -1 or episode != -1:
-        if candidate["season"] == season and candidate["episode"] == episode:
+        if candidate_pool["season"] == season and candidate_pool["episode"] == episode:
             score += 50
             reasons.append("season+ep exact fit: 50")
-        elif candidate["season"] == season or candidate["episode"] == episode:
+        elif candidate_pool["season"] == season or candidate_pool["episode"] == episode:
             score += 25
             reasons.append("season or ep matched: 25")
         else:
@@ -126,30 +155,38 @@ def score_candidate(
             reasons.append("season/ep but unmatched: -5")
 
     input_tokens = set(fuzzutils.default_process(main_title).split())
-    candidate_tokens = set(fuzzutils.default_process(candidate["title"]).split())
+    candidate_tokens = set(fuzzutils.default_process(candidate_pool["title"]).split())
+    series_title_tokens = set(fuzzutils.default_process(series_title or "").split())
 
-    token_score = fuzz.token_set_ratio(main_title, candidate["title"])
-    weighted_recall = compute_weighted_overlap(
-        input_tokens, candidate_tokens, token_freq
+    token_score = int(fuzz.token_set_ratio(main_title, candidate_pool["title"]) * 0.25)
+    weighted_recall = int(
+        compute_weighted_overlap(
+            input_tokens, candidate_tokens, candidate_token_freq, input_token_freq
+        )
+        * 50
     )
 
-    score += int(token_score * 0.3)  # Up to 30
-    score += int(weighted_recall * 70)  # Up to 70
+    score += token_score
+    score += weighted_recall
 
     # Penalize missed tokens (input expected but not found)
-    missed_tokens = input_tokens - candidate_tokens
+    missed_tokens = (input_tokens - series_title_tokens) - (
+        candidate_tokens - series_title_tokens
+    )
     missed_penalty = len(missed_tokens) * 3
     score -= missed_penalty
     reasons.append(f"missed tokens: {len(missed_tokens)} (-{missed_penalty})")
 
     # Penalize extra tokens (unexpected tokens in candidate)
-    extra_tokens = candidate_tokens - input_tokens
+    extra_tokens = (candidate_tokens - series_title_tokens) - (
+        input_tokens - series_title_tokens
+    )
     extra_penalty = len(extra_tokens) * 2
     score -= int(extra_penalty)
     reasons.append(f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)})")
 
-    reasons.append(f"token set similarity: {token_score}%")
-    reasons.append(f"weighted keyword recall: {int(weighted_recall * 100)}%")
+    reasons.append(f"token set similarity: {token_score}")
+    reasons.append(f"weighted keyword recall: {weighted_recall}")
 
     return score, "; ".join(reasons)
 
@@ -171,22 +208,40 @@ def clean_sonarr_data(sonarr_data: list[dict]) -> list[dict]:
 
 
 def match_title_to_sonarr_episode(
-    main_title: str, airdate: str, sonarr_data: List[Dict]
+    main_title: str,
+    airdate: str,
+    sonarr_data: List[Dict],
+    input_titles: List[str] | None = None,
+    input_series: str | None = None,
 ) -> Dict:
     """Attempts to match a streaming title to a Sonarr entry with weighted keyword and date proximity scoring."""
     cleaned_title = clean_text(main_title)
-    cleaned_data = clean_sonarr_data(sonarr_data)
+    cleaned_candidate_data = clean_sonarr_data(sonarr_data)
 
-    token_freq = build_token_frequencies(cleaned_data)
+    # print(sonarr_data)
+
+    cleaned_candidate_titles = [
+        in_t.get("title") or "" for in_t in cleaned_candidate_data
+    ]
+    cleaned_others_titles = [clean_text(in_t) or "" for in_t in (input_titles or [])]
+
+    candidate_token_freq = build_token_frequencies(cleaned_candidate_titles)
+    input_token_freq = build_token_frequencies(cleaned_others_titles)
     season, episode = extract_episode_hint(main_title)
 
     best_match = None
     best_score = -1
     best_reason = ""
 
-    for candidate in cleaned_data:
+    for candidate in cleaned_candidate_data:
         score, reason = score_candidate(
-            cleaned_title, season, episode, candidate, token_freq
+            cleaned_title,
+            season,
+            episode,
+            candidate,
+            candidate_token_freq,
+            input_token_freq,
+            input_series,
         )
 
         # Date distance bonus
