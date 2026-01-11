@@ -56,25 +56,28 @@ def time_distance_score(
     return int(score)
 
 
-def extract_episode_hint(title: str) -> Tuple[int, int]:
+def extract_episode_hint(title: str) -> Tuple[int, int, str | None]:
     """Attempts to parse season and episode numbers from the title."""
     patterns = [
-        r"S(?P<season_hint>\d+)[\W_]-[\W_]E?(?P<episode_hint>\d+)",  # S5 - 6
-        r"S(?P<season_hint>\d+)E(?P<episode_hint>\d+)",  # S2E3
-        r"Season[^\d]*(?P<season_hint>\d+)[^\d]+Episode[^\d]*(?P<episode_hint>\d+)",  # Season 2 Episode 3
-        r"S(?P<season_hint>\d+)[^\d]+Ep(?:isode)?[^\d]*(?P<episode_hint>\d+)",  # S2 Ep 3
-        r"Episode[^\d]*(?P<episode_hint>\d+)",  # Episode 3
-        r"Ep[^\d]*(?P<episode_hint>\d+)",  # Ep 3
-        r"^[^\d]+S(?:eason)?[^\d]?(?P<season_hint>\d+)[^\d]*\(?E?\d+-E?\d+\)?",  # S5 (01-12)  | Season 3 (E01-12) | Season4 (e01-E12)
+        r"(?=S(?:eason)?[\W_]?(?P<_s>\d{1,4}[^\d])|(?(_s)E?|E)p?(?:isode)?[\W_]?\d{1,4}[^\d])(?P<sub>(?:S(?:eason)?[\W_]?(?P<s_hint>\d{,4}))?[^a-zA-Z0-9]{,5}(?:(?(_s)E?|E)p?(?:isode)?[\W_]?(?P<e_hint>\d{1,4}(?!\w)))?)"
+        # Below should be redundant to above, now.
+        # r"(?P<substring>S(?P<season_hint>\d+)[\W_]?-[\W_]?E?(?P<episode_hint>\d+))",  # S5 - 6
+        # r"S(?P<season_hint>\d+)E(?P<episode_hint>\d+)",  # S2E3
+        # r"Season[^\d]*(?P<season_hint>\d+)[^\d]+Episode[^\d]*(?P<episode_hint>\d+)",  # Season 2 Episode 3
+        # r"S(?P<season_hint>\d+)[^\d]+Ep(?:isode)?[^\d]*(?P<episode_hint>\d+)",  # S2 Ep 3
+        # r"Episode[^\d]*(?P<episode_hint>\d+)",  # Episode 3
+        # r"Ep[^\d]*(?P<episode_hint>\d+)",  # Ep 3
+        # r"^[^\d]+S(?:eason)?[^\d]?(?P<season_hint>\d+)[^\d]*\(?E?\d+-E?\d+\)?",  # S5 (01-12)  | Season 3 (E01-12) | Season4 (e01-E12)
     ]
     for pattern in patterns:
         match = re.search(pattern, title, re.IGNORECASE)
         if match:
             results = match.groupdict()
-            hint_s = int(results.get("season_hint") or -1)
-            hint_e = int(results.get("episode_hint") or -1)
-            return hint_s, hint_e
-    return -1, -1
+            s_hint = int(results.get("s_hint") or -1)
+            e_hint = int(results.get("e_hint") or -1)
+            sub = results.get("sub") or ""
+            return s_hint, e_hint, sub
+    return -1, -1, None
 
 
 def build_token_frequencies(token_pool: List[str]) -> Dict[str, int]:
@@ -277,6 +280,7 @@ def match_title_to_sonarr_episode(
         "episode": best_match["episode"] if best_match else None,
         "episode_title": best_match["title"] if best_match else None,
         "episode_orig_title": best_match["orig_title"] if best_match else None,
+        "full_match": best_match if best_match else None,
         "score": best_score,
         "reason": best_reason,
     }
