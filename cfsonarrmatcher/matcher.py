@@ -272,6 +272,7 @@ def match_title_to_sonarr_episode(
     return {
         "input": main_title,
         "matched_show": best_match["series"] if best_match else None,
+        "matched_series_id": best_match["series_id"] if best_match else None,
         "season": best_match["season"] if best_match else None,
         "episode": best_match["episode"] if best_match else None,
         "episode_title": best_match["title"] if best_match else None,
