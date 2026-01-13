@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 from dateutil import parser as dateparser
 from rapidfuzz import fuzz
 from rapidfuzz import utils as fuzzutils
+from unidecode import unidecode
 
 
 def parse_date(date_input: str | date) -> datetime | None:
@@ -56,10 +57,10 @@ def time_distance_score(
     return int(score)
 
 
-def extract_episode_hint(title: str) -> Tuple[int, int, str | None]:
+def extract_episode_hint(title: str) -> Tuple[int, int, str]:
     """Attempts to parse season and episode numbers from the title."""
     patterns = [
-        r"(?=S(?:eason)?[\W_]?(?P<_s>\d{1,4}[^\d])|(?(_s)E?|E)p?(?:isode)?[\W_]?\d{1,4}[^\d])(?P<sub>(?:S(?:eason)?[\W_]?(?P<s_hint>\d{,4}))?[^a-zA-Z0-9]{,5}(?:(?(_s)E?|E)p?(?:isode)?[\W_]?(?P<e_hint>\d{1,4}(?!\w)))?)"
+        r"(?=S(?:eason)?[\W_]?(?P<_s>\d{1,4}(?!\d))|(?(_s)E?|E)p?(?:isode)?[\W_]?\d{1,4}(?!\d))(?P<sub>(?:S(?:eason)?[\W_]?(?P<s_hint>\d{,4}))?[^a-zA-Z0-9]{,5}(?:(?(_s)E?|E)p?(?:isode)?[\W_]?(?P<e_hint>\d{1,4}(?!\w)))?)"
         # Below should be redundant to above, now.
         # r"(?P<substring>S(?P<season_hint>\d+)[\W_]?-[\W_]?E?(?P<episode_hint>\d+))",  # S5 - 6
         # r"S(?P<season_hint>\d+)E(?P<episode_hint>\d+)",  # S2E3
@@ -77,7 +78,7 @@ def extract_episode_hint(title: str) -> Tuple[int, int, str | None]:
             e_hint = int(results.get("e_hint") or -1)
             sub = results.get("sub") or ""
             return s_hint, e_hint, sub
-    return -1, -1, None
+    return -1, -1, ""
 
 
 def build_token_frequencies(token_pool: List[str]) -> Dict[str, int]:
@@ -149,13 +150,13 @@ def score_candidate(
     if season != -1 or episode != -1:
         if candidate_pool["season"] == season and candidate_pool["episode"] == episode:
             score += 50
-            reasons.append("season+ep exact fit: 50")
+            reasons.append("season+ep exact fit: 50; ")
         elif candidate_pool["season"] == season or candidate_pool["episode"] == episode:
             score += 25
-            reasons.append("season or ep matched: 25")
+            reasons.append("season or ep matched: 25; ")
         else:
             score -= 5
-            reasons.append("season/ep but unmatched: -5")
+            reasons.append("season/ep hint not unmatched: -5; ")
 
     input_tokens = set(fuzzutils.default_process(main_title).split())
     candidate_tokens = set(fuzzutils.default_process(candidate_pool["title"]).split())
@@ -178,7 +179,7 @@ def score_candidate(
     )
     missed_penalty = len(missed_tokens) * 3
     score -= missed_penalty
-    reasons.append(f"missed tokens: {len(missed_tokens)} (-{missed_penalty})")
+    reasons.append(f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); ")
 
     # Penalize extra tokens (unexpected tokens in candidate)
     extra_tokens = (candidate_tokens - series_title_tokens) - (
@@ -186,12 +187,12 @@ def score_candidate(
     )
     extra_penalty = len(extra_tokens) * 2
     score -= int(extra_penalty)
-    reasons.append(f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)})")
+    reasons.append(f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); ")
 
-    reasons.append(f"token set similarity: {token_score}")
-    reasons.append(f"weighted keyword recall: {weighted_recall}")
+    reasons.append(f"token set similarity: {token_score}; ")
+    reasons.append(f"weighted keyword recall: {weighted_recall}; ")
 
-    return score, "; ".join(reasons)
+    return score, "".join(reasons)
 
 
 def clean_text(text: str) -> str:
@@ -218,7 +219,9 @@ def match_title_to_sonarr_episode(
     input_series: str | None = None,
 ) -> Dict:
     """Attempts to match a streaming title to a Sonarr entry with weighted keyword and date proximity scoring."""
-    cleaned_title = clean_text(main_title)
+    main_title_d = unidecode(main_title)
+
+    cleaned_title = clean_text(main_title_d)
     cleaned_candidate_data = clean_sonarr_data(sonarr_data)
 
     # print(sonarr_data)
@@ -230,14 +233,18 @@ def match_title_to_sonarr_episode(
 
     candidate_token_freq = build_token_frequencies(cleaned_candidate_titles)
     input_token_freq = build_token_frequencies(cleaned_others_titles)
-    season, episode = extract_episode_hint(main_title)
+    season, episode, _ = extract_episode_hint(main_title_d)
 
     best_match = None
     best_score = -1
     best_reason = ""
 
     for candidate in cleaned_candidate_data:
-        score, reason = score_candidate(
+        candidate_title_d = unidecode(candidate.get("title", ""))
+        candidate_orig_title_d = unidecode(candidate.get("orig_title", ""))
+        reason = f"match: '{main_title_d.lower()}'  candidate: '{candidate_orig_title_d.lower()}';  "
+
+        score, newreason = score_candidate(
             cleaned_title,
             season,
             episode,
@@ -246,26 +253,49 @@ def match_title_to_sonarr_episode(
             input_token_freq,
             input_series,
         )
+        reason += newreason
 
-        # Date distance bonus
         episode_date = candidate.get("air_date", "")
         episode_date_utc = candidate.get("air_date_utc", "")
+
         if episode_date != "":
             date_score_bonus = time_distance_score(airdate, episode_date_utc)
             if date_score_bonus > 0:
                 date_gap = date_distance_days(airdate, episode_date_utc)
                 score += date_score_bonus
-                reason += f"; date_gap={date_gap}d (bonus={date_score_bonus:.2f})"
+                reason += f"date_gap={date_gap}d (bonus={date_score_bonus:.2f}); "
             else:
-                reason += "; no airdate bonus"
+                reason += "no airdate bonus; "
+
+        if candidate_orig_title_d.lower() in main_title_d.lower():
+            reason += "verbatim match; "
+            score += 50
+        else:
+            if len(candidate_title_d) < 5:
+                reason += "short candidate, no verbatim match; "
+                score -= 35 + (5 - len(candidate_title_d)) * 5
+            if fuzzutils.default_process(
+                candidate_orig_title_d
+            ) in fuzzutils.default_process(main_title_d):
+                reason += "fuzzy match; "
+                score += 25 + len(candidate_orig_title_d)
+            candidate_hint = extract_episode_hint(candidate_title_d)
+            main_hint = extract_episode_hint(main_title_d)
+            if (
+                len(candidate_hint[2])
+                and len(main_hint[2])
+                and candidate_hint[:1] == main_hint[:1]
+            ):
+                reason += "hint fingerprint match"
+                score += 10
 
         if candidate.get("monitored", False) is True:
             score += 1
-            reason += "; monitored episode"
+            reason += "monitored episode; "
 
         if candidate.get("hasFile", True) is False:
             score += 1
-            reason += "; no file"
+            reason += "no file; "
 
         if score > best_score:
             best_match = candidate
@@ -273,7 +303,7 @@ def match_title_to_sonarr_episode(
             best_reason = reason
 
     return {
-        "input": main_title,
+        "input": main_title_d,
         "matched_show": best_match["series"] if best_match else None,
         "matched_series_id": best_match["series_id"] if best_match else None,
         "season": best_match["season"] if best_match else None,
@@ -296,26 +326,35 @@ def match_title_to_sonarr_show(main_title: str, sonarr_shows) -> Dict:
     best_id = ""
 
     for show_title, show_id in set(sonarr_shows):
+        score = 0
+        reason = ""
+
         processed_show = fuzzutils.default_process(show_title)
         show_tokens = set(processed_show.split())
 
-        # Priority boost if show name appears verbatim
-        verbatim_match = processed_show in fuzzutils.default_process(main_title)
-        verbatim_bonus = 35 + len(show_title) if verbatim_match else 0
+        if show_title.lower() in main_title.lower():
+            reason += "verbatim match; "
+            score += 75
+        else:
+            if len(show_title) < 5:
+                reason += "short candidate, no verbatim match; "
+                score -= 35 + (5 - len(show_title)) * 5
+            if processed_show in fuzzutils.default_process(main_title):
+                reason += "fuzzy match; "
+                score += 35 + len(show_title)
 
         # Token similarity and keyword overlap
         token_score = fuzz.token_set_ratio(main_title, show_title)
+        score += int(token_score * 0.10)
+        reason += f"token set similarity: {token_score}; "
+
         keyword_overlap = (
             len(show_tokens & input_tokens) / len(show_tokens) if show_tokens else 0
         )
+        score += int(keyword_overlap * 50)
+        reason += f"keyword overlap: {keyword_overlap}; "
 
-        score = verbatim_bonus + int(token_score * 0.10) + int(keyword_overlap * 50)
-
-        reason = (
-            f"{'verbatim match; ' if verbatim_match else ''}"
-            f"token set similarity: {token_score}%, "
-            f"keyword overlap: {int(keyword_overlap * 100)}%"
-        )
+        score = max(0, score)
 
         if score > best_score:
             best_id = show_id
