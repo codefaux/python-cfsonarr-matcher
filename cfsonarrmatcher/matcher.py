@@ -196,7 +196,11 @@ def score_candidate(
 
 
 def clean_text(text: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9\s]", " ", text).lower()
+    return re.sub(r"[^a-z0-9\s]+", " ", unidecode(text.lower()))
+
+
+def deep_strip_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", unidecode(text.lower()))
 
 
 def clean_sonarr_data(sonarr_data: list[dict]) -> list[dict]:
@@ -219,9 +223,10 @@ def match_title_to_sonarr_episode(
     input_series: str | None = None,
 ) -> Dict:
     """Attempts to match a streaming title to a Sonarr entry with weighted keyword and date proximity scoring."""
-    main_title_d = unidecode(main_title)
+    _mtd = unidecode(main_title.lower())
+    _isd = unidecode((input_series or "").lower())
 
-    cleaned_title = clean_text(main_title_d)
+    _cmtd = clean_text(_mtd)
     cleaned_candidate_data = clean_sonarr_data(sonarr_data)
 
     # print(sonarr_data)
@@ -233,19 +238,20 @@ def match_title_to_sonarr_episode(
 
     candidate_token_freq = build_token_frequencies(cleaned_candidate_titles)
     input_token_freq = build_token_frequencies(cleaned_others_titles)
-    season, episode, _ = extract_episode_hint(main_title_d)
+    season, episode, _ = extract_episode_hint(_mtd)
 
     best_match = None
     best_score = -1
     best_reason = ""
 
     for candidate in cleaned_candidate_data:
-        candidate_title_d = unidecode(candidate.get("title", ""))
-        candidate_orig_title_d = unidecode(candidate.get("orig_title", ""))
-        reason = f"match: '{main_title_d.lower()}'  candidate: '{candidate_orig_title_d.lower()}';  "
+        _ctd = unidecode(candidate.get("title", "").lower())
+        _cotd = unidecode(candidate.get("orig_title", "").lower())
+
+        reason = f"match: '{_mtd}'  candidate: '{_cotd}';  \n\t"
 
         score, newreason = score_candidate(
-            cleaned_title,
+            _cmtd,
             season,
             episode,
             candidate,
@@ -267,24 +273,47 @@ def match_title_to_sonarr_episode(
             else:
                 reason += "no airdate bonus; "
 
-        if candidate_orig_title_d.lower() in main_title_d.lower():
+        if _cotd in _mtd:
             reason += "verbatim match; "
             score += 50
         else:
-            if len(candidate_title_d) < 5:
+            _len_ctd = len(_ctd)
+            _len_cotd = len(_cotd)
+
+            _fuzz_cotd = fuzzutils.default_process(_cotd)
+            _fuzz_mtd = fuzzutils.default_process(_mtd)
+            _fuzz_isd = fuzzutils.default_process(_isd)
+
+            _deep_ctd = deep_strip_text(_ctd)
+            _deep_mtd = deep_strip_text(_mtd)
+
+            _hint_ctd = extract_episode_hint(_ctd)
+            _hint_mtd = extract_episode_hint(_mtd)
+
+            if _len_ctd < 5:
                 reason += "short candidate, no verbatim match; "
-                score -= 35 + (5 - len(candidate_title_d)) * 5
-            if fuzzutils.default_process(
-                candidate_orig_title_d
-            ) in fuzzutils.default_process(main_title_d):
+                score -= 35 + (5 - _len_ctd) * 5
+
+            if clean_text(_cotd) in clean_text(_mtd):
+                reason += "cleaned verbatim match; "
+                score += 40
+            elif _fuzz_cotd in _fuzz_mtd:
                 reason += "fuzzy match; "
-                score += 25 + len(candidate_orig_title_d)
-            candidate_hint = extract_episode_hint(candidate_title_d)
-            main_hint = extract_episode_hint(main_title_d)
+                score += 25 + _len_cotd
+            elif len(_isd) > 5 and (_fuzz_mtd.replace(_fuzz_isd, "")) in _fuzz_cotd:
+                reason += "fuzzy match (-show); "
+                score += 25 + _len_cotd
+            elif _deep_ctd == _deep_mtd:
+                reason += "deep strip match; "
+                score += 25 + _len_cotd
+            elif _deep_ctd in _deep_mtd:
+                reason += "deep strip submatch; "
+                score += 10 + _len_cotd
+
             if (
-                len(candidate_hint[2])
-                and len(main_hint[2])
-                and candidate_hint[:1] == main_hint[:1]
+                len(_hint_ctd[2])
+                and len(_hint_mtd[2])
+                and _hint_ctd[:1] == _hint_mtd[:1]
             ):
                 reason += "hint fingerprint match"
                 score += 10
@@ -303,7 +332,7 @@ def match_title_to_sonarr_episode(
             best_reason = reason
 
     return {
-        "input": main_title_d,
+        "input": _mtd,
         "matched_show": best_match["series"] if best_match else None,
         "matched_series_id": best_match["series_id"] if best_match else None,
         "season": best_match["season"] if best_match else None,
