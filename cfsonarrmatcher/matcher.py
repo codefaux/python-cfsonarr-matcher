@@ -58,7 +58,7 @@ def time_distance_score(
     return int(score)
 
 
-def extract_episode_hint(title: str) -> Tuple[int, int, str]:
+def extract_episode_hint(title: str) -> Tuple[int, int, str | None]:
     """Attempts to parse season and episode numbers from the title."""
     patterns = [
         r"(?=S(?:eason)?[\W_]?(?P<_s>\d{1,4}(?!\d))|(?(_s)E?|E)p?(?:isode)?[\W_]?\d{1,4}(?!\d))(?P<sub>(?:S(?:eason)?[\W_]?(?P<s_hint>\d{,4}))?[^a-zA-Z0-9]{,5}(?:(?(_s)E?|E)p?(?:isode)?[\W_]?(?P<e_hint>\d{1,4}(?!\w)))?)"
@@ -77,9 +77,9 @@ def extract_episode_hint(title: str) -> Tuple[int, int, str]:
             results = match.groupdict()
             s_hint = int(results.get("s_hint") or -1)
             e_hint = int(results.get("e_hint") or -1)
-            sub = results.get("sub") or ""
+            sub = results.get("sub")
             return s_hint, e_hint, sub
-    return -1, -1, ""
+    return -1, -1, None
 
 
 def build_token_frequencies(token_pool: List[str]) -> Dict[str, int]:
@@ -177,8 +177,11 @@ def match_title_to_sonarr_episode(
 
     _cand_titles_c_tokenfreq = build_token_frequencies(_cand_titles_c)
     _other_titles_c_tokenfreq = build_token_frequencies(_other_titles_c)
+
+    _hint_main_title_d = extract_episode_hint(_main_title_d)
+
     _main_title_season_hint, _main_title_episode_hint, _main_title_substr_hint = (
-        extract_episode_hint(_main_title_d)
+        _hint_main_title_d
     )
 
     best_match = None
@@ -187,9 +190,13 @@ def match_title_to_sonarr_episode(
 
     for __cand_c in _cand_data_c:
         _cand_title_c = __cand_c.get("title_c", "")
+        _cand_tag_d = unidecode(__cand_c.get("tag") or "")
         _cand_orig_title_d = unidecode(__cand_c.get("orig_title", "").lower())
 
-        reason = f"match: '{_main_title_d}'  candidate: '{_cand_orig_title_d}';  \n\t"
+        reason = f"input: '{_main_title_d}'  candidate: '{_cand_orig_title_d}';  \n\t"
+
+        reason += f"HINT: {_main_title_season_hint, _main_title_episode_hint, _main_title_substr_hint}"
+
         score = 0
 
         if _main_title_season_hint != -1 or _main_title_episode_hint != -1:
@@ -206,12 +213,19 @@ def match_title_to_sonarr_episode(
                 score += 20
                 reason += "season or ep matched: 25; "
             else:
+                _main_title_substr_hint = ""  # invalidate if irrelevant
                 score -= 10
                 reason += "season/ep hint not unmatched: -5; "
 
         _main_title_c_tokens = set(fuzzutils.default_process(_main_title_c).split())
         _input_series_d_tokens = set(fuzzutils.default_process(_input_series_d).split())
         _cand_title_c_tokens = set(fuzzutils.default_process(_cand_title_c).split())
+        _input_tag_d_tokens = set(fuzzutils.default_process(_cand_tag_d).split())
+        _input_hint_tokens = set(
+            unidecode(clean_text(_main_title_substr_hint or "").lower()).split()
+        )
+
+        reason += f"TOKENS: {_input_hint_tokens}"
 
         token_score = int(fuzz.token_set_ratio(_main_title_c, __cand_c["title"]) * 0.25)
         weighted_recall = int(
@@ -226,22 +240,6 @@ def match_title_to_sonarr_episode(
 
         score += token_score
         score += weighted_recall
-
-        # Penalize missed tokens (input expected but not found)
-        missed_tokens = (_main_title_c_tokens - _input_series_d_tokens) - (
-            _cand_title_c_tokens - _input_series_d_tokens
-        )
-        missed_penalty = len(missed_tokens) * 3
-        score -= missed_penalty
-        reason += f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); "
-
-        # Penalize extra tokens (unexpected tokens in candidate)
-        extra_tokens = (_cand_title_c_tokens - _input_series_d_tokens) - (
-            _main_title_c_tokens - _input_series_d_tokens
-        )
-        extra_penalty = len(extra_tokens) * 2
-        score -= int(extra_penalty)
-        reason += f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); "
 
         reason += f"token set similarity: {token_score}; "
         reason += f"weighted keyword recall: {weighted_recall}; "
@@ -273,7 +271,6 @@ def match_title_to_sonarr_episode(
             _deep_main_title_d = deep_strip_text(_main_title_d)
 
             _hint_cand_title_c = extract_episode_hint(_cand_title_c)
-            _hint_main_title_d = extract_episode_hint(_main_title_d)
 
             if _len_cand_title_c < 5:
                 reason += "short candidate, no verbatim match; "
@@ -301,12 +298,41 @@ def match_title_to_sonarr_episode(
 
             print(f"Fingerprint: CTD: {_hint_cand_title_c}  MTD: {_hint_main_title_d}")
             if (
-                len(_hint_cand_title_c[2])
-                and len(_hint_main_title_d[2])
+                len(_hint_cand_title_c[2] or "")
+                and len(_hint_main_title_d[2] or "")
                 and _hint_cand_title_c[:1] == _hint_main_title_d[:1]
             ):
-                reason += "hint fingerprint match"
-                score += 15
+                if _hint_cand_title_c[2] == _main_title_c:
+                    reason += "verbatim match, candidate hint is title; "
+                    score += 25
+                else:
+                    reason += "hint fingerprint match; "
+                    score += 15
+
+            # Penalize missed tokens (in candidate but not input)
+            missed_tokens = (_cand_title_c_tokens - _input_series_d_tokens) - (
+                _main_title_c_tokens - _input_series_d_tokens
+            )
+
+            reason += f"MISSED TOKENS: {missed_tokens}"
+
+            missed_penalty = len(missed_tokens) * 3
+            score -= missed_penalty
+            reason += f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); "
+
+            # Penalize extra tokens (unexpected tokens in candidate)
+            extra_tokens = (
+                _main_title_c_tokens
+                - _input_series_d_tokens
+                - _input_tag_d_tokens
+                - _input_hint_tokens
+            ) - (_cand_title_c_tokens - _input_series_d_tokens)
+
+            reason += f"EXTRA TOKENS: {extra_tokens}"
+
+            extra_penalty = len(extra_tokens) * 3
+            score -= int(extra_penalty)
+            reason += f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); "
 
         if __cand_c.get("monitored", False) is True:
             score += 1
