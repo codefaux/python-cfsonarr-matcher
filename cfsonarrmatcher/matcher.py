@@ -195,8 +195,6 @@ def match_title_to_sonarr_episode(
 
         reason = f"input: '{_main_title_d}'  candidate: '{_cand_orig_title_d}';  \n\t"
 
-        reason += f"HINT: {_main_title_season_hint, _main_title_episode_hint, _main_title_substr_hint}"
-
         score = 0
 
         if _main_title_season_hint != -1 or _main_title_episode_hint != -1:
@@ -224,8 +222,6 @@ def match_title_to_sonarr_episode(
         _input_hint_tokens = set(
             unidecode(clean_text(_main_title_substr_hint or "").lower()).split()
         )
-
-        reason += f"TOKENS: {_input_hint_tokens}"
 
         token_score = int(fuzz.token_set_ratio(_main_title_c, __cand_c["title"]) * 0.25)
         weighted_recall = int(
@@ -296,7 +292,6 @@ def match_title_to_sonarr_episode(
                 reason += "deep strip submatch; "
                 score += 10 + _len_cand_orig_title_d
 
-            print(f"Fingerprint: CTD: {_hint_cand_title_c}  MTD: {_hint_main_title_d}")
             if (
                 len(_hint_cand_title_c[2] or "")
                 and len(_hint_main_title_d[2] or "")
@@ -314,8 +309,6 @@ def match_title_to_sonarr_episode(
                 _main_title_c_tokens - _input_series_d_tokens
             )
 
-            reason += f"MISSED TOKENS: {missed_tokens}"
-
             missed_penalty = len(missed_tokens) * 3
             score -= missed_penalty
             reason += f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); "
@@ -327,8 +320,6 @@ def match_title_to_sonarr_episode(
                 - _input_tag_d_tokens
                 - _input_hint_tokens
             ) - (_cand_title_c_tokens - _input_series_d_tokens)
-
-            reason += f"EXTRA TOKENS: {extra_tokens}"
 
             extra_penalty = len(extra_tokens) * 3
             score -= int(extra_penalty)
