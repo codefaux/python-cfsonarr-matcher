@@ -136,66 +136,6 @@ def compute_weighted_overlap(
     return overlap_weight / total_weight if total_weight > 0 else 0.0
 
 
-def score_candidate(
-    main_title: str,
-    season: int,
-    episode: int,
-    candidate_pool: Dict,
-    candidate_token_freq: Dict[str, int],
-    input_token_freq: Dict[str, int] | None = None,
-    series_title: str | None = None,
-) -> Tuple[int, str]:
-    score = 0
-    reasons = []
-
-    if season != -1 or episode != -1:
-        if candidate_pool["season"] == season and candidate_pool["episode"] == episode:
-            score += 50
-            reasons.append("season+ep exact fit: 50; ")
-        elif candidate_pool["season"] == season or candidate_pool["episode"] == episode:
-            score += 25
-            reasons.append("season or ep matched: 25; ")
-        else:
-            score -= 5
-            reasons.append("season/ep hint not unmatched: -5; ")
-
-    input_tokens = set(fuzzutils.default_process(main_title).split())
-    candidate_tokens = set(fuzzutils.default_process(candidate_pool["title"]).split())
-    series_title_tokens = set(fuzzutils.default_process(series_title or "").split())
-
-    token_score = int(fuzz.token_set_ratio(main_title, candidate_pool["title"]) * 0.25)
-    weighted_recall = int(
-        compute_weighted_overlap(
-            input_tokens, candidate_tokens, candidate_token_freq, input_token_freq
-        )
-        * 50
-    )
-
-    score += token_score
-    score += weighted_recall
-
-    # Penalize missed tokens (input expected but not found)
-    missed_tokens = (input_tokens - series_title_tokens) - (
-        candidate_tokens - series_title_tokens
-    )
-    missed_penalty = len(missed_tokens) * 3
-    score -= missed_penalty
-    reasons.append(f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); ")
-
-    # Penalize extra tokens (unexpected tokens in candidate)
-    extra_tokens = (candidate_tokens - series_title_tokens) - (
-        input_tokens - series_title_tokens
-    )
-    extra_penalty = len(extra_tokens) * 2
-    score -= int(extra_penalty)
-    reasons.append(f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); ")
-
-    reasons.append(f"token set similarity: {token_score}; ")
-    reasons.append(f"weighted keyword recall: {weighted_recall}; ")
-
-    return score, "".join(reasons)
-
-
 def clean_text(text: str) -> str:
     return re.sub(r"[^a-z0-9\s]+", " ", unidecode(text.lower()))
 
@@ -225,13 +165,12 @@ def match_title_to_sonarr_episode(
     input_series: str | None = None,
 ) -> Dict:
     """Attempts to match a streaming title to a Sonarr entry with weighted keyword and date proximity scoring."""
+
     _mtd = unidecode(main_title.lower())
     _isd = unidecode((input_series or "").lower())
 
     _cmtd = clean_text(_mtd)
     cleaned_candidate_data = clean_sonarr_data(sonarr_data)
-
-    # print(sonarr_data)
 
     cleaned_candidate_titles = [
         in_t.get("title") or "" for in_t in cleaned_candidate_data
@@ -251,17 +190,52 @@ def match_title_to_sonarr_episode(
         _cotd = unidecode(candidate.get("orig_title", "").lower())
 
         reason = f"match: '{_mtd}'  candidate: '{_cotd}';  \n\t"
+        score = 0
 
-        score, newreason = score_candidate(
-            _cmtd,
-            season,
-            episode,
-            candidate,
-            candidate_token_freq,
-            input_token_freq,
-            input_series,
+        if season != -1 or episode != -1:
+            if candidate["season"] == season and candidate["episode"] == episode:
+                score += 50
+                reason += "season+ep exact fit: 50; "
+            elif candidate["season"] == season or candidate["episode"] == episode:
+                score += 25
+                reason += "season or ep matched: 25; "
+            else:
+                score -= 5
+                reason += "season/ep hint not unmatched: -5; "
+
+        input_tokens = set(fuzzutils.default_process(_cmtd).split())
+        candidate_tokens = set(fuzzutils.default_process(candidate["title"]).split())
+        series_title_tokens = set(fuzzutils.default_process(input_series or "").split())
+
+        token_score = int(fuzz.token_set_ratio(_cmtd, candidate["title"]) * 0.25)
+        weighted_recall = int(
+            compute_weighted_overlap(
+                input_tokens, candidate_tokens, candidate_token_freq, input_token_freq
+            )
+            * 50
         )
-        reason += newreason
+
+        score += token_score
+        score += weighted_recall
+
+        # Penalize missed tokens (input expected but not found)
+        missed_tokens = (input_tokens - series_title_tokens) - (
+            candidate_tokens - series_title_tokens
+        )
+        missed_penalty = len(missed_tokens) * 3
+        score -= missed_penalty
+        reason += f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); "
+
+        # Penalize extra tokens (unexpected tokens in candidate)
+        extra_tokens = (candidate_tokens - series_title_tokens) - (
+            input_tokens - series_title_tokens
+        )
+        extra_penalty = len(extra_tokens) * 2
+        score -= int(extra_penalty)
+        reason += f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); "
+
+        reason += f"token set similarity: {token_score}; "
+        reason += f"weighted keyword recall: {weighted_recall}; "
 
         episode_date = candidate.get("air_date", "")
         episode_date_utc = candidate.get("air_date_utc", "")
