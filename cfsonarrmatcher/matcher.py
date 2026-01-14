@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Dict, List, Tuple
 
 from dateutil import parser as dateparser
+from fauxjson import persist_wrap as _dump
 from rapidfuzz import fuzz
 from rapidfuzz import utils as fuzzutils
 from unidecode import unidecode
@@ -215,6 +216,7 @@ def clean_sonarr_data(sonarr_data: list[dict]) -> list[dict]:
     ]
 
 
+@_dump
 def match_title_to_sonarr_episode(
     main_title: str,
     airdate: str,
