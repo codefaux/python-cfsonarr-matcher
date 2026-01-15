@@ -58,7 +58,7 @@ def time_distance_score(
     return int(score)
 
 
-def extract_episode_hint(title: str) -> Tuple[int, int, str | None]:
+def extract_episode_hint(title: str) -> Tuple[int, int, str]:
     """Attempts to parse season and episode numbers from the title."""
     patterns = [
         r"(?=S(?:eason)?[\W_]?(?P<_s>\d{1,4}(?!\d))|(?(_s)E?|E)p?(?:isode)?[\W_]?\d{1,4}(?!\d))(?P<sub>(?:S(?:eason)?[\W_]?(?P<s_hint>\d{,4}))?[^a-zA-Z0-9]{,5}(?:(?(_s)E?|E)p?(?:isode)?[\W_]?(?P<e_hint>\d{1,4}(?!\w)))?)"
@@ -77,9 +77,9 @@ def extract_episode_hint(title: str) -> Tuple[int, int, str | None]:
             results = match.groupdict()
             s_hint = int(results.get("s_hint") or -1)
             e_hint = int(results.get("e_hint") or -1)
-            sub = results.get("sub")
+            sub = results.get("sub", "")
             return s_hint, e_hint, sub
-    return -1, -1, None
+    return -1, -1, ""
 
 
 def build_token_frequencies(token_pool: List[str]) -> Dict[str, int]:
@@ -198,6 +198,7 @@ def match_title_to_sonarr_episode(
         score = 0
 
         if _main_title_season_hint != -1 or _main_title_episode_hint != -1:
+            _input_tag_d_tokens = set(fuzzutils.default_process(_cand_tag_d).split())
             if (
                 __cand_c["season"] == _main_title_season_hint
                 and __cand_c["episode"] == _main_title_episode_hint
@@ -211,17 +212,20 @@ def match_title_to_sonarr_episode(
                 score += 20
                 reason += "season or ep matched: 25; "
             else:
-                _main_title_substr_hint = ""  # invalidate if irrelevant
                 score -= 10
                 reason += "season/ep hint not unmatched: -5; "
+        else:
+            _input_tag_d_tokens = set[str]()
 
         _main_title_c_tokens = set(fuzzutils.default_process(_main_title_c).split())
         _input_series_d_tokens = set(fuzzutils.default_process(_input_series_d).split())
         _cand_title_c_tokens = set(fuzzutils.default_process(_cand_title_c).split())
-        _input_tag_d_tokens = set(fuzzutils.default_process(_cand_tag_d).split())
+
         _input_hint_tokens = set(
-            unidecode(clean_text(_main_title_substr_hint or "").lower()).split()
+            unidecode(clean_text(_main_title_substr_hint).lower()).split()
         )
+
+        reason += f"TOKENS: {_input_hint_tokens}"
 
         token_score = int(fuzz.token_set_ratio(_main_title_c, __cand_c["title"]) * 0.25)
         weighted_recall = int(
@@ -292,6 +296,9 @@ def match_title_to_sonarr_episode(
                 reason += "deep strip submatch; "
                 score += 10 + _len_cand_orig_title_d
 
+            reason += (
+                "Fingerprint: CTD: {_hint_cand_title_c}  MTD: {_hint_main_title_d}"
+            )
             if (
                 len(_hint_cand_title_c[2] or "")
                 and len(_hint_main_title_d[2] or "")
@@ -309,6 +316,8 @@ def match_title_to_sonarr_episode(
                 _main_title_c_tokens - _input_series_d_tokens
             )
 
+            reason += f"MISSED TOKENS: {missed_tokens}"
+
             missed_penalty = len(missed_tokens) * 3
             score -= missed_penalty
             reason += f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); "
@@ -320,6 +329,8 @@ def match_title_to_sonarr_episode(
                 - _input_tag_d_tokens
                 - _input_hint_tokens
             ) - (_cand_title_c_tokens - _input_series_d_tokens)
+
+            reason += f"EXTRA TOKENS: {extra_tokens}"
 
             extra_penalty = len(extra_tokens) * 3
             score -= int(extra_penalty)
