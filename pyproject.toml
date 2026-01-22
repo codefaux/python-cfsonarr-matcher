@@ -4,5 +4,5 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cfsonarrmatcher"
-version = "0.3.10"
+version = "0.3.14"
 dependencies = [ "unidecode", "rapidfuzz", "python-dateutil", "fauxlogger @ git+https://github.com/codefaux/python-fauxlogger@main", "fauxjson @ git+https://github.com/codefaux/python-fauxjson@main" ]

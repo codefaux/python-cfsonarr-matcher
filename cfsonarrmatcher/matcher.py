@@ -137,7 +137,7 @@ def compute_weighted_overlap(
 
 
 def clean_text(text: str) -> str:
-    return re.sub(r"[^a-z0-9\s]+", " ", unidecode(text.lower()))
+    return re.sub(r"[^a-z0-9_\s]+", " ", unidecode(text.lower()))
 
 
 def deep_strip_text(text: str) -> str:
@@ -166,8 +166,8 @@ def match_title_to_sonarr_episode(
 ) -> Dict:
     """Attempts to match a streaming title to a Sonarr entry with weighted keyword and date proximity scoring."""
 
-    _main_title_d = unidecode(main_title.lower())
-    _input_series_d = unidecode((input_series or "").lower())
+    _main_title_d = unidecode(main_title.lower()).replace("  ", " ")
+    _input_series_d = unidecode((input_series or "").lower()).replace("  ", " ")
 
     _main_title_c = clean_text(_main_title_d)
     _cand_data_c = clean_sonarr_data(candidate_data)
@@ -189,9 +189,11 @@ def match_title_to_sonarr_episode(
     best_reason = ""
 
     for __cand_c in _cand_data_c:
-        _cand_title_c = __cand_c.get("title_c", "")
-        _cand_tag_d = unidecode(__cand_c.get("tag") or "")
-        _cand_orig_title_d = unidecode(__cand_c.get("orig_title", "").lower())
+        _cand_title_c = __cand_c.get("title_c") or ""
+        _cand_tag_d = __cand_c.get("tag") or ""
+        _cand_orig_title_d = unidecode(__cand_c.get("orig_title", "").lower()).replace(
+            "  ", " "
+        )
 
         reason = f"input: '{_main_title_d}'  candidate: '{_cand_orig_title_d}';  \n\t"
 
@@ -200,14 +202,14 @@ def match_title_to_sonarr_episode(
         if _main_title_season_hint != -1 or _main_title_episode_hint != -1:
             _input_tag_d_tokens = set(fuzzutils.default_process(_cand_tag_d).split())
             if (
-                __cand_c["season"] == _main_title_season_hint
-                and __cand_c["episode"] == _main_title_episode_hint
+                __cand_c.get("season") == _main_title_season_hint
+                and __cand_c.get("episode") == _main_title_episode_hint
             ):
                 score += 50
                 reason += "season+ep exact fit: 50; "
             elif (
-                __cand_c["season"] == _main_title_season_hint
-                or __cand_c["episode"] == _main_title_episode_hint
+                __cand_c.get("season") == _main_title_season_hint
+                or __cand_c.get("episode") == _main_title_episode_hint
             ):
                 score += 20
                 reason += "season or ep matched: 25; "
@@ -222,25 +224,10 @@ def match_title_to_sonarr_episode(
         _cand_title_c_tokens = set(fuzzutils.default_process(_cand_title_c).split())
 
         _input_hint_tokens = set(
-            unidecode(clean_text(_main_title_substr_hint).lower()).split()
+            unidecode(
+                clean_text(_main_title_substr_hint).lower().replace("  ", " ")
+            ).split()
         )
-
-        token_score = int(fuzz.token_set_ratio(_main_title_c, __cand_c["title"]) * 0.25)
-        weighted_recall = int(
-            compute_weighted_overlap(
-                _main_title_c_tokens,
-                _cand_title_c_tokens,
-                _cand_titles_c_tokenfreq,
-                _other_titles_c_tokenfreq,
-            )
-            * 50
-        )
-
-        score += token_score
-        score += weighted_recall
-
-        reason += f"token set similarity: {token_score}; "
-        reason += f"weighted keyword recall: {weighted_recall}; "
 
         episode_date = __cand_c.get("air_date", "")
         episode_date_utc = __cand_c.get("air_date_utc", "")
@@ -256,10 +243,9 @@ def match_title_to_sonarr_episode(
 
         if _cand_orig_title_d in _main_title_d:
             reason += "verbatim match; "
-            score += 50
+            score += 100
         else:
             _len_cand_title_c = len(_cand_title_c)
-            _len_cand_orig_title_d = len(_cand_orig_title_d)
 
             _fuzz_cand_orig_title_d = fuzzutils.default_process(_cand_orig_title_d)
             _fuzz_main_title_d = fuzzutils.default_process(_main_title_d)
@@ -276,60 +262,95 @@ def match_title_to_sonarr_episode(
 
             if clean_text(_cand_orig_title_d) in clean_text(_main_title_d):
                 reason += "cleaned verbatim match; "
-                score += 40
+                score += 75
             elif _fuzz_cand_orig_title_d in _fuzz_main_title_d:
-                reason += "fuzzy match; "
-                score += 25 + _len_cand_orig_title_d
+                reason += "fuzzy submatch; "
+                score += 50
             elif (
                 len(_input_series_d) > 5
                 and (_fuzz_main_title_d.replace(_fuzz_input_series_d, ""))
                 in _fuzz_cand_orig_title_d
             ):
                 reason += "fuzzy match (-show); "
-                score += 25 + _len_cand_orig_title_d
+                score += 50
             elif _deep_cand_title_c == _deep_main_title_d:
                 reason += "deep strip match; "
-                score += 25 + _len_cand_orig_title_d
+                score += 40
             elif _deep_cand_title_c in _deep_main_title_d:
                 reason += "deep strip submatch; "
-                score += 10 + _len_cand_orig_title_d
-
-            if (
+                score += 30
+            elif (
                 len(_hint_cand_title_c[2] or "")
                 and len(_hint_main_title_d[2] or "")
                 and _hint_cand_title_c[:1] == _hint_main_title_d[:1]
             ):
                 if _hint_cand_title_c[2] == _main_title_c:
                     reason += "verbatim match, candidate hint is title; "
-                    score += 25
+                    score += 50
                 else:
                     reason += "hint fingerprint match; "
                     score += 15
+            else:
+                _cand_pool = _cand_title_c_tokens - _input_series_d_tokens
+                _input_pool = (
+                    _main_title_c_tokens
+                    - _input_series_d_tokens
+                    - _input_tag_d_tokens
+                    - _input_hint_tokens
+                )
+                # Penalize missed tokens (in candidate but not input)
+                missed_tokens = _cand_pool - _input_pool
 
-            # Penalize missed tokens (in candidate but not input)
-            missed_tokens = (_cand_title_c_tokens - _input_series_d_tokens) - (
-                _main_title_c_tokens - _input_series_d_tokens
-            )
+                reason += f"MISSED TOKENS: {missed_tokens}"
 
-            reason += f"MISSED TOKENS: {missed_tokens}"
+                missed_penalty = len(missed_tokens) * 5
+                score -= missed_penalty
+                reason += f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); "
 
-            missed_penalty = len(missed_tokens) * 5
-            score -= missed_penalty
-            reason += f"missed tokens: {len(missed_tokens)} (-{missed_penalty}); "
+                # Penalize extra tokens (unexpected tokens in candidate)
+                extra_tokens = _input_pool - _cand_pool
 
-            # Penalize extra tokens (unexpected tokens in candidate)
-            extra_tokens = (
-                _main_title_c_tokens
-                - _input_series_d_tokens
-                - _input_tag_d_tokens
-                - _input_hint_tokens
-            ) - (_cand_title_c_tokens - _input_series_d_tokens)
+                reason += f"EXTRA TOKENS: {extra_tokens}"
 
-            reason += f"EXTRA TOKENS: {extra_tokens}"
+                extra_penalty = len(extra_tokens) * 5
+                score -= int(extra_penalty)
+                reason += f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); "
 
-            extra_penalty = len(extra_tokens) * 5
-            score -= int(extra_penalty)
-            reason += f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); "
+                token_score = int(
+                    fuzz.token_set_ratio(_main_title_c, _cand_title_c) * 0.25
+                )
+                weighted_recall = int(
+                    compute_weighted_overlap(
+                        _main_title_c_tokens,
+                        _cand_title_c_tokens,
+                        _cand_titles_c_tokenfreq,
+                        _other_titles_c_tokenfreq,
+                    )
+                    * 50
+                )
+                reason += f"old token set similarity: {token_score}; "
+                reason += f"old weighted keyword recall: {weighted_recall}; "
+
+                token_score = int(
+                    fuzz.token_set_ratio(list(_cand_pool), list(_input_pool)) * 0.25
+                )
+                _cand_pool_tokenfreq = build_token_frequencies(list(_cand_pool))
+                _input_pool_tokenfreq = build_token_frequencies(list(_input_pool))
+
+                weighted_recall = int(
+                    compute_weighted_overlap(
+                        _cand_pool,
+                        _input_pool,
+                        _cand_pool_tokenfreq,
+                        _input_pool_tokenfreq,
+                    )
+                    * 50
+                )
+                reason += f"new token set similarity: {token_score}; "
+                reason += f"new weighted keyword recall: {weighted_recall}; "
+
+                score += token_score
+                score += weighted_recall
 
         if __cand_c.get("monitored", False) is True:
             score += 1
@@ -346,19 +367,19 @@ def match_title_to_sonarr_episode(
 
     return {
         "input": _main_title_d,
-        "matched_show": best_match["series"] if best_match else None,
-        "matched_series_id": best_match["series_id"] if best_match else None,
-        "season": best_match["season"] if best_match else None,
-        "episode": best_match["episode"] if best_match else None,
-        "episode_title": best_match["title"] if best_match else None,
-        "episode_orig_title": best_match["orig_title"] if best_match else None,
+        "matched_show": best_match.get("series") if best_match else None,
+        "matched_series_id": best_match.get("series_id") if best_match else None,
+        "season": best_match.get("season") if best_match else None,
+        "episode": best_match.get("episode") if best_match else None,
+        "episode_title": best_match.get("title") if best_match else None,
+        "episode_orig_title": best_match.get("orig_title") if best_match else None,
         "full_match": best_match if best_match else None,
         "score": best_score,
         "reason": best_reason,
     }
 
 
-def match_title_to_sonarr_show(main_title: str, sonarr_shows) -> Dict:
+def match_title_to_sonarr_show(main_title: str, sonarr_shows: list) -> Dict:
     """Matches a streaming title to the best-matching Sonarr show using strict verbatim and token-based scoring."""
     input_tokens = set(fuzzutils.default_process(main_title).split())
 
