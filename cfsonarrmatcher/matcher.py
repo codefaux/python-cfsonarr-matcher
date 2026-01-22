@@ -159,6 +159,66 @@ def clean_sonarr_data(sonarr_data: list[dict]) -> list[dict]:
     ]
 
 
+def extract_date_candidates(text, max_window=4):
+    """
+    Generate substrings that could contain dates.
+    """
+    tokens = re.findall(r"[A-Za-z0-9]+", text)
+
+    candidates = set()
+
+    # single tokens
+    candidates.update(tokens)
+
+    # sliding windows (2–N tokens)
+    for size in range(2, max_window + 1):
+        for i in range(len(tokens) - size + 1):
+            candidates.add(" ".join(tokens[i : i + size]))
+
+    # also try the full string
+    candidates.add(text)
+
+    return candidates
+
+
+def try_parse_date(text):
+    """
+    Attempt to parse a date from text.
+    Returns a date object or None.
+    """
+    try:
+        dt = dateparser.parse(
+            text, fuzzy=True, dayfirst=False, yearfirst=False  # change if needed
+        )
+        return dt.date()
+    except (ValueError, OverflowError):
+        return None
+
+
+def extract_dates(text):
+    """
+    Return a set of parsed date objects found in text.
+    """
+    dates = set()
+
+    for candidate in extract_date_candidates(text):
+        d = try_parse_date(candidate)
+        if d:
+            dates.add(d)
+
+    return dates
+
+
+def dates_match(text1, text2):
+    dates1 = extract_dates(text1)
+    dates2 = extract_dates(text2)
+
+    if not dates1 or not dates2:
+        return False, set(), set()
+
+    return not dates1.isdisjoint(dates2), dates1, dates2
+
+
 def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str, dict]:
     __cand_c = cand_dict
     _main_title_d = other_data["main_title_d"]
@@ -274,6 +334,21 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
                 reason += "hint fingerprint match; "
                 score += 15
         else:
+            # BELOW: No solid match, add clues
+
+            _main_title_dates = extract_dates(_main_title_c)
+            _cand_title_dates = extract_dates(_cand_title_c)
+
+            if _main_title_dates and _cand_title_dates:
+                reason += f"input title dates: {_main_title_dates}; "
+                reason += f"candidate title dates: {_cand_title_dates}; "
+                if _main_title_dates.isdisjoint(_cand_title_dates):
+                    reason += "both titles have dates, but don't match; "
+                    score -= 25
+                else:
+                    reason += "both titles have dates which match; "
+                    score += 25
+
             _cand_pool = _cand_title_c_tokens - _input_series_d_tokens
             _input_pool = (
                 _main_title_c_tokens
