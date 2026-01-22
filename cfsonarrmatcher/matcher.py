@@ -147,7 +147,7 @@ def deep_strip_text(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", unidecode(text.lower()))
 
 
-def clean_sonarr_data(sonarr_data: list[dict]) -> list[dict]:
+def clean_data(sonarr_data: list[dict]) -> list[dict]:
     return [
         {
             **entry,
@@ -419,7 +419,7 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
     return score, reason, cand_dict
 
 
-def match_title_to_sonarr_episode(
+def match_to_episode(
     main_title: str,
     airdate: str,
     candidate_data: List[Dict],
@@ -432,7 +432,7 @@ def match_title_to_sonarr_episode(
     _input_series_d = unidecode((input_series or "").lower()).replace("  ", " ")
 
     _main_title_c = clean_text(_main_title_d)
-    _cand_data_c = clean_sonarr_data(candidate_data)
+    _cand_data_c = clean_data(candidate_data)
 
     _cand_titles_c = [__cand_c.get("title_c") or "" for __cand_c in _cand_data_c]
     _other_titles_c = [clean_text(__title) or "" for __title in (input_titles or [])]
@@ -525,7 +525,7 @@ def score_show_candidate(
     return score, reason, show_id, show_title
 
 
-def match_title_to_sonarr_show(main_title: str, sonarr_shows: list) -> Dict:
+def match_to_show(main_title: str, sonarr_shows: list) -> Dict:
     """Matches a streaming title to the best-matching Sonarr show using strict verbatim and token-based scoring."""
     input_tokens = set(fuzzutils.default_process(main_title).split())
 
