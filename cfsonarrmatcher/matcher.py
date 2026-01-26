@@ -1,16 +1,21 @@
 import os
-import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from typing import Dict, List, Tuple
 
+import regex as re
 from dateutil import parser as dateparser
 from rapidfuzz import fuzz
 from rapidfuzz import utils as fuzzutils
 from unidecode import unidecode
 
 MATCHER_THREADS: int = int(os.getenv("MATCHER_THREADS") or 8)
+
+HINT_REGEX = re.compile(
+    r"(?=S(?:eason)?[\W_]?(?P<_s>\d{1,4}(?!\d))|(?(_s)E?|E)p?(?:isode)?[\W_]?\d{1,4}(?!\d))(?P<sub>(?:S(?:eason)?[\W_]?(?P<s_hint>\d{,4}))?[^a-zA-Z0-9]{,5}(?:(?(_s)E?|E)p?(?:isode)?[\W_]?(?P<e_hint>\d{1,4}(?!\w)))?)",
+    re.IGNORECASE,
+)
 
 
 def parse_date(date_input: str | date) -> datetime | None:
@@ -63,25 +68,22 @@ def time_distance_score(
 
 def extract_episode_hint(title: str) -> Tuple[int, int, str]:
     """Attempts to parse season and episode numbers from the title."""
-    patterns = [
-        r"(?=S(?:eason)?[\W_]?(?P<_s>\d{1,4}(?!\d))|(?(_s)E?|E)p?(?:isode)?[\W_]?\d{1,4}(?!\d))(?P<sub>(?:S(?:eason)?[\W_]?(?P<s_hint>\d{,4}))?[^a-zA-Z0-9]{,5}(?:(?(_s)E?|E)p?(?:isode)?[\W_]?(?P<e_hint>\d{1,4}(?!\w)))?)"
-        # Below should be redundant to above, now.
-        # r"(?P<substring>S(?P<season_hint>\d+)[\W_]?-[\W_]?E?(?P<episode_hint>\d+))",  # S5 - 6
-        # r"S(?P<season_hint>\d+)E(?P<episode_hint>\d+)",  # S2E3
-        # r"Season[^\d]*(?P<season_hint>\d+)[^\d]+Episode[^\d]*(?P<episode_hint>\d+)",  # Season 2 Episode 3
-        # r"S(?P<season_hint>\d+)[^\d]+Ep(?:isode)?[^\d]*(?P<episode_hint>\d+)",  # S2 Ep 3
-        # r"Episode[^\d]*(?P<episode_hint>\d+)",  # Episode 3
-        # r"Ep[^\d]*(?P<episode_hint>\d+)",  # Ep 3
-        # r"^[^\d]+S(?:eason)?[^\d]?(?P<season_hint>\d+)[^\d]*\(?E?\d+-E?\d+\)?",  # S5 (01-12)  | Season 3 (E01-12) | Season4 (e01-E12)
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, title, re.IGNORECASE)
-        if match:
-            results = match.groupdict()
-            s_hint = int(results.get("s_hint") or -1)
-            e_hint = int(results.get("e_hint") or -1)
-            sub = results.get("sub", "")
-            return s_hint, e_hint, sub
+    # Below should be redundant to compiled regex, now.
+    # r"(?P<substring>S(?P<season_hint>\d+)[\W_]?-[\W_]?E?(?P<episode_hint>\d+))",  # S5 - 6
+    # r"S(?P<season_hint>\d+)E(?P<episode_hint>\d+)",  # S2E3
+    # r"Season[^\d]*(?P<season_hint>\d+)[^\d]+Episode[^\d]*(?P<episode_hint>\d+)",  # Season 2 Episode 3
+    # r"S(?P<season_hint>\d+)[^\d]+Ep(?:isode)?[^\d]*(?P<episode_hint>\d+)",  # S2 Ep 3
+    # r"Episode[^\d]*(?P<episode_hint>\d+)",  # Episode 3
+    # r"Ep[^\d]*(?P<episode_hint>\d+)",  # Ep 3
+    # r"^[^\d]+S(?:eason)?[^\d]?(?P<season_hint>\d+)[^\d]*\(?E?\d+-E?\d+\)?",  # S5 (01-12)  | Season 3 (E01-12) | Season4 (e01-E12)
+
+    match = HINT_REGEX.search(title)
+    if match:
+        results = match.groupdict()
+        s_hint = int(results.get("s_hint") or -1)
+        e_hint = int(results.get("e_hint") or -1)
+        sub = results.get("sub", "")
+        return s_hint, e_hint, sub
     return -1, -1, ""
 
 
@@ -173,7 +175,7 @@ def extract_date_candidates(text, max_window=4):
     # sliding windows (2–N tokens)
     for size in range(2, max_window + 1):
         for i in range(len(tokens) - size + 1):
-            candidates.add(" ".join(tokens[i : i + size]))
+            candidates.add(" ".join(tokens[j] for j in range(i, i + size)))
 
     # also try the full string
     candidates.add(text)
