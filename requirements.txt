@@ -14,6 +14,8 @@ python-dateutil==2.9.0.post0
     # via cfsonarrmatcher (pyproject.toml)
 rapidfuzz==3.14.3
     # via cfsonarrmatcher (pyproject.toml)
+regex==2026.1.15
+    # via cfsonarrmatcher (pyproject.toml)
 six==1.17.0
     # via python-dateutil
 unidecode==1.4.0
