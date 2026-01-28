@@ -222,6 +222,19 @@ def dates_match(text1, text2):
 
 
 def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str, dict]:
+
+    # FUTURE - splitter for multi-episode
+    # - strip known (title, creator, ep, hints, ...) from all, trim dangling symbols
+    # - count each of separator symbols (eg. `,-_.:` )
+    # - split by separators, lowest count first, pyramid stack
+    # - candidate match groups of pyramid, tip to base
+
+    # Showname - S01 - Ep02: Short Episode a, Short Episode B | Ep 03: Short Episode C, Short Episode D [Bluray].mkv
+
+    # [Short Episode A, Short Episode B], [Short Episode C, Short Episode D]
+    # [Short Episode A], [Short Episode B], [Short Episode C], [Short Episode D]
+    # [Short], [Episode], [A], [Short], [Episode], [B], [Short], [Episode], [C], [Short], [Episode], [D]
+
     __cand_c = cand_dict
     _main_title_d = other_data["main_title_d"]
     _main_title_season_hint = other_data["main_title_season_hint"]
@@ -308,6 +321,9 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
         if clean_text(_cand_orig_title_d) in clean_text(_main_title_d):
             reason += "cleaned verbatim match; "
             score += 75
+        elif _deep_cand_title_c == _deep_main_title_d:
+            reason += "deep strip match; "
+            score += 65
         elif _fuzz_cand_orig_title_d in _fuzz_main_title_d:
             reason += "fuzzy submatch; "
             score += 50
@@ -318,9 +334,6 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
         ):
             reason += "fuzzy match (-show); "
             score += 50
-        elif _deep_cand_title_c == _deep_main_title_d:
-            reason += "deep strip match; "
-            score += 40
         elif _deep_cand_title_c in _deep_main_title_d:
             reason += "deep strip submatch; "
             score += 30
