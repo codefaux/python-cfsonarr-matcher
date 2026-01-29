@@ -12,10 +12,13 @@ from unidecode import unidecode
 
 MATCHER_THREADS: int = int(os.getenv("MATCHER_THREADS") or 8)
 
-HINT_REGEX = re.compile(
+_hint_re = re.compile(
     r"(?=S(?:eason)?[\W_]?(?P<_s>\d{1,4}(?!\d))|(?(_s)E?|E)p?(?:isode)?[\W_]?\d{1,4}(?!\d))(?P<sub>(?:S(?:eason)?[\W_]?(?P<s_hint>\d{,4}))?[^a-zA-Z0-9]{,5}(?:(?(_s)E?|E)p?(?:isode)?[\W_]?(?P<e_hint>\d{1,4}(?!\w)))?)",
     re.IGNORECASE,
 )
+_strip_re = re.compile(r"[^a-z0-9]")
+_clean_re = re.compile(r"[^a-z0-9_\s]+")
+_tokens_re = re.compile(r"[A-Za-z0-9]+")
 
 
 def parse_date(date_input: str | date) -> datetime | None:
@@ -77,7 +80,7 @@ def extract_episode_hint(title: str) -> Tuple[int, int, str]:
     # r"Ep[^\d]*(?P<episode_hint>\d+)",  # Ep 3
     # r"^[^\d]+S(?:eason)?[^\d]?(?P<season_hint>\d+)[^\d]*\(?E?\d+-E?\d+\)?",  # S5 (01-12)  | Season 3 (E01-12) | Season4 (e01-E12)
 
-    match = HINT_REGEX.search(title)
+    match = _hint_re.search(title)
     if match:
         results = match.groupdict()
         s_hint = int(results.get("s_hint") or -1)
@@ -142,11 +145,11 @@ def compute_weighted_overlap(
 
 
 def clean_text(text: str) -> str:
-    return re.sub(r"[^a-z0-9_\s]+", " ", unidecode(text.lower()))
+    return _clean_re.sub(" ", unidecode(text.lower()))
 
 
 def deep_strip_text(text: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", unidecode(text.lower()))
+    return _strip_re.sub("", unidecode(text.lower()))
 
 
 def clean_data(sonarr_data: list[dict]) -> list[dict]:
@@ -165,7 +168,7 @@ def extract_date_candidates(text, max_window=4):
     """
     Generate substrings that could contain dates.
     """
-    tokens = re.findall(r"[A-Za-z0-9]+", text)
+    tokens = _tokens_re.findall(text)
 
     candidates = set()
 
