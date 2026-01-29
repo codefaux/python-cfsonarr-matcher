@@ -277,10 +277,6 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
     else:
         _input_tag_d_tokens = set[str]()
 
-    _main_title_c_tokens = set(fuzzutils.default_process(_main_title_c).split())
-    _input_series_d_tokens = set(fuzzutils.default_process(_input_series_d).split())
-    _cand_title_c_tokens = set(fuzzutils.default_process(_cand_title_c).split())
-
     _input_hint_tokens = set(
         unidecode(
             clean_text(_main_title_substr_hint).lower().replace("  ", " ")
@@ -363,6 +359,12 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
                 else:
                     reason += "both titles have dates which match; "
                     score += 25
+
+            _main_title_c_tokens = set(fuzzutils.default_process(_main_title_c).split())
+            _input_series_d_tokens = set(
+                fuzzutils.default_process(_input_series_d).split()
+            )
+            _cand_title_c_tokens = set(fuzzutils.default_process(_cand_title_c).split())
 
             _cand_pool = _cand_title_c_tokens - _input_series_d_tokens
             _input_pool = (
