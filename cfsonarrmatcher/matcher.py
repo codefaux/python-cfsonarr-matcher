@@ -17,7 +17,7 @@ _hint_re = re.compile(
     re.IGNORECASE,
 )
 _strip_re = re.compile(r"[^a-z0-9]")
-_clean_re = re.compile(r"[^a-z0-9_\s]+")
+_clean_re = re.compile(r"[^a-z0-9\s]+")
 _tokens_re = re.compile(r"[A-Za-z0-9]+")
 
 
@@ -521,25 +521,28 @@ def score_show_candidate(
 
     if show_title.lower() in main_title.lower():
         reason += "verbatim match; "
-        score += 75
+        score += 100
+    elif clean_text(show_title) in clean_text(main_title):
+        reason += "strip match; "
+        score += 85
     else:
         if len(show_title) < 5:
             reason += "short candidate, no verbatim match; "
-            score -= 35 + (5 - len(show_title)) * 5
+            score -= 50 + (5 - len(show_title)) * 5
         if processed_show in fuzzutils.default_process(main_title):
             reason += "fuzzy match; "
             score += 35 + len(show_title)
 
-    # Token similarity and keyword overlap
-    token_score = fuzz.token_set_ratio(main_title, show_title)
-    score += int(token_score * 0.10)
-    reason += f"token set similarity: {token_score}; "
+        # Token similarity and keyword overlap
+        token_score = fuzz.token_set_ratio(main_title, show_title)
+        score += int(token_score * 0.10)
+        reason += f"token set similarity: {token_score}; "
 
-    keyword_overlap = (
-        len(show_tokens & input_tokens) / len(show_tokens) if show_tokens else 0
-    )
-    score += int(keyword_overlap * 50)
-    reason += f"keyword overlap: {keyword_overlap}; "
+        keyword_overlap = (
+            len(show_tokens & input_tokens) / len(show_tokens) if show_tokens else 0
+        )
+        score += int(keyword_overlap * 50)
+        reason += f"keyword overlap: {keyword_overlap}; "
 
     score = max(0, score)
     return score, reason, show_id, show_title
@@ -568,7 +571,7 @@ def match_to_show(main_title: str, sonarr_shows: list) -> Dict:
         for _cand in as_completed(cand_scores):
             results.append(_cand.result())
 
-        best_score, best_reason, best_id, best_title = max(results, key=lambda x: x[1])
+        best_score, best_reason, best_id, best_title = max(results, key=lambda x: x[0])
 
     return {
         "input": main_title,
