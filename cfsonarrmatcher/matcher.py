@@ -144,12 +144,12 @@ def compute_weighted_overlap(
     return overlap_weight / total_weight if total_weight > 0 else 0.0
 
 
-def clean_text(text: str) -> str:
-    return _clean_re.sub(" ", unidecode(text.lower()))
+def clean_text(text: str, repl: str = " ") -> str:
+    return _clean_re.sub(repl, unidecode(text.lower()))
 
 
-def deep_strip_text(text: str) -> str:
-    return _strip_re.sub("", unidecode(text.lower()))
+def deep_strip_text(text: str, repl: str = "") -> str:
+    return _strip_re.sub(repl, unidecode(text.lower()))
 
 
 def clean_data(sonarr_data: list[dict]) -> list[dict]:
