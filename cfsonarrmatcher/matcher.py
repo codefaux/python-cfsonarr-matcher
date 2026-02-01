@@ -239,14 +239,14 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
     # [Short], [Episode], [A], [Short], [Episode], [B], [Short], [Episode], [C], [Short], [Episode], [D]
 
     __cand_c = cand_dict
-    _main_title_d = other_data["main_title_d"]
-    _main_title_season_hint = other_data["main_title_season_hint"]
-    _main_title_episode_hint = other_data["main_title_episode_hint"]
-    _main_title_c = other_data["main_title_c"]
+    _input_title_d = other_data["input_title_d"]
+    _input_title_season_hint = other_data["input_title_season_hint"]
+    _input_title_episode_hint = other_data["input_title_episode_hint"]
+    _input_title_c = other_data["input_title_c"]
     _input_series_d = other_data["input_series_d"]
-    _main_title_substr_hint = other_data["main_title_substr_hint"]
-    _airdate = other_data["airdate"]
-    _hint_main_title_d = other_data["hint_main_title_d"]
+    _input_title_substr_hint = other_data["input_title_substr_hint"]
+    _airdate = other_data["input_airdate"]
+    _hint_input_title_d = other_data["hint_input_title_d"]
     _cand_titles_c_tokenfreq = other_data["cand_titles_c_tokenfreq"]
     _other_titles_c_tokenfreq = other_data["other_titles_c_tokenfreq"]
 
@@ -256,21 +256,21 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
         "  ", " "
     )
 
-    reason = f"input: '{_main_title_d}'  candidate: '{_cand_orig_title_d}';  \n\t"
+    reason = f"input: '{_input_title_d}'  candidate: '{_cand_orig_title_d}';  \n\t"
 
     score = 0
 
-    if _main_title_season_hint != -1 or _main_title_episode_hint != -1:
+    if _input_title_season_hint != -1 or _input_title_episode_hint != -1:
         _input_tag_d_tokens = set(fuzzutils.default_process(_cand_tag_d).split())
         if (
-            __cand_c.get("season") == _main_title_season_hint
-            and __cand_c.get("episode") == _main_title_episode_hint
+            __cand_c.get("season") == _input_title_season_hint
+            and __cand_c.get("episode") == _input_title_episode_hint
         ):
             score += 50
             reason += "season+ep exact fit: 50; "
         elif (
-            __cand_c.get("season") == _main_title_season_hint
-            or __cand_c.get("episode") == _main_title_episode_hint
+            __cand_c.get("season") == _input_title_season_hint
+            or __cand_c.get("episode") == _input_title_episode_hint
         ):
             score += 20
             reason += "season or ep matched: 25; "
@@ -282,7 +282,7 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
 
     _input_hint_tokens = set(
         unidecode(
-            clean_text(_main_title_substr_hint).lower().replace("  ", " ")
+            clean_text(_input_title_substr_hint).lower().replace("  ", " ")
         ).split()
     )
 
@@ -298,18 +298,18 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
         else:
             reason += "no airdate bonus; "
 
-    if _cand_orig_title_d in _main_title_d:
+    if _cand_orig_title_d in _input_title_d:
         reason += "verbatim match; "
         score += 100
     else:
         _len_cand_title_c = len(_cand_title_c)
 
         _fuzz_cand_orig_title_d = fuzzutils.default_process(_cand_orig_title_d)
-        _fuzz_main_title_d = fuzzutils.default_process(_main_title_d)
+        _fuzz_input_title_d = fuzzutils.default_process(_input_title_d)
         _fuzz_input_series_d = fuzzutils.default_process(_input_series_d)
 
         _deep_cand_title_c = deep_strip_text(_cand_title_c)
-        _deep_main_title_d = deep_strip_text(_main_title_d)
+        _deep_input_title_d = deep_strip_text(_input_title_d)
 
         _hint_cand_title_c = extract_episode_hint(_cand_title_c)
 
@@ -317,31 +317,31 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
             reason += "short candidate, no verbatim match; "
             score -= 35 + (5 - _len_cand_title_c) * 5
 
-        if clean_text(_cand_orig_title_d) in clean_text(_main_title_d):
+        if clean_text(_cand_orig_title_d) in clean_text(_input_title_d):
             reason += "cleaned verbatim match; "
             score += 75
-        elif _deep_cand_title_c == _deep_main_title_d:
+        elif _deep_cand_title_c == _deep_input_title_d:
             reason += "deep strip match; "
             score += 65
-        elif _fuzz_cand_orig_title_d in _fuzz_main_title_d:
+        elif _fuzz_cand_orig_title_d in _fuzz_input_title_d:
             reason += "fuzzy submatch; "
             score += 50
         elif (
             len(_input_series_d) > 5
-            and (_fuzz_main_title_d.replace(_fuzz_input_series_d, ""))
+            and (_fuzz_input_title_d.replace(_fuzz_input_series_d, ""))
             in _fuzz_cand_orig_title_d
         ):
             reason += "fuzzy match (-show); "
             score += 50
-        elif _deep_cand_title_c in _deep_main_title_d:
+        elif _deep_cand_title_c in _deep_input_title_d:
             reason += "deep strip submatch; "
             score += 30
         elif (
             len(_hint_cand_title_c[2] or "")
-            and len(_hint_main_title_d[2] or "")
-            and _hint_cand_title_c[:1] == _hint_main_title_d[:1]
+            and len(_hint_input_title_d[2] or "")
+            and _hint_cand_title_c[:1] == _hint_input_title_d[:1]
         ):
-            if _hint_cand_title_c[2] == _main_title_c:
+            if _hint_cand_title_c[2] == _input_title_c:
                 reason += "verbatim match, candidate hint is title; "
                 score += 50
             else:
@@ -350,20 +350,22 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
         else:
             # BELOW: No solid match, add clues
 
-            _main_title_dates = extract_dates(_main_title_c)
-            _cand_title_dates = extract_dates(_cand_title_c)
+            _input_title_dates = extract_dates(_input_title_c)
+            _input_title_dates = extract_dates(_cand_title_c)
 
-            if _main_title_dates and _cand_title_dates:
-                reason += f"input title dates: {_main_title_dates}; "
-                reason += f"candidate title dates: {_cand_title_dates}; "
-                if _main_title_dates.isdisjoint(_cand_title_dates):
+            if _input_title_dates and _input_title_dates:
+                reason += f"input title dates: {_input_title_dates}; "
+                reason += f"candidate title dates: {_input_title_dates}; "
+                if _input_title_dates.isdisjoint(_input_title_dates):
                     reason += "both titles have dates, but don't match; "
                     score -= 25
                 else:
                     reason += "both titles have dates which match; "
                     score += 25
 
-            _main_title_c_tokens = set(fuzzutils.default_process(_main_title_c).split())
+            _input_title_c_tokens = set(
+                fuzzutils.default_process(_input_title_c).split()
+            )
             _input_series_d_tokens = set(
                 fuzzutils.default_process(_input_series_d).split()
             )
@@ -371,7 +373,7 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
 
             _cand_pool = _cand_title_c_tokens - _input_series_d_tokens
             _input_pool = (
-                _main_title_c_tokens
+                _input_title_c_tokens
                 - _input_series_d_tokens
                 - _input_tag_d_tokens
                 - _input_hint_tokens
@@ -394,10 +396,12 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
             score -= int(extra_penalty)
             reason += f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); "
 
-            token_score = int(fuzz.token_set_ratio(_main_title_c, _cand_title_c) * 0.25)
+            token_score = int(
+                fuzz.token_set_ratio(_input_title_c, _cand_title_c) * 0.25
+            )
             weighted_recall = int(
                 compute_weighted_overlap(
-                    _main_title_c_tokens,
+                    _input_title_c_tokens,
                     _cand_title_c_tokens,
                     _cand_titles_c_tokenfreq,
                     _other_titles_c_tokenfreq,
@@ -440,18 +444,18 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
 
 
 def match_to_episode(
-    main_title: str,
-    airdate: str,
+    input_title: str,
+    input_airdate: str,
     candidate_data: List[Dict],
     input_titles: List[str] | None = None,
     input_series: str | None = None,
 ) -> Dict:
     """Attempts to match a streaming title to a Sonarr entry with weighted keyword and date proximity scoring."""
 
-    _main_title_d = unidecode(main_title.lower()).replace("  ", " ")
+    _input_title_d = unidecode(input_title.lower()).replace("  ", " ")
     _input_series_d = unidecode((input_series or "").lower()).replace("  ", " ")
 
-    _main_title_c = clean_text(_main_title_d)
+    _input_title_c = clean_text(_input_title_d)
     _cand_data_c = clean_data(candidate_data)
 
     _cand_titles_c = [__cand_c.get("title_c") or "" for __cand_c in _cand_data_c]
@@ -460,10 +464,10 @@ def match_to_episode(
     _cand_titles_c_tokenfreq = build_token_frequencies(_cand_titles_c)
     _other_titles_c_tokenfreq = build_token_frequencies(_other_titles_c)
 
-    _hint_main_title_d = extract_episode_hint(_main_title_d)
+    _hint_input_title_d = extract_episode_hint(_input_title_d)
 
-    _main_title_season_hint, _main_title_episode_hint, _main_title_substr_hint = (
-        _hint_main_title_d
+    _input_title_season_hint, _input_title_episode_hint, _input_title_substr_hint = (
+        _hint_input_title_d
     )
 
     best_match = None
@@ -471,14 +475,14 @@ def match_to_episode(
     best_reason = ""
 
     other_data = {}
-    other_data["main_title_d"] = _main_title_d
-    other_data["main_title_season_hint"] = _main_title_season_hint
-    other_data["main_title_episode_hint"] = _main_title_episode_hint
-    other_data["main_title_c"] = _main_title_c
+    other_data["input_title_d"] = _input_title_d
+    other_data["input_title_season_hint"] = _input_title_season_hint
+    other_data["input_title_episode_hint"] = _input_title_episode_hint
+    other_data["input_title_c"] = _input_title_c
     other_data["input_series_d"] = _input_series_d
-    other_data["main_title_substr_hint"] = _main_title_substr_hint
-    other_data["airdate"] = airdate
-    other_data["hint_main_title_d"] = _hint_main_title_d
+    other_data["input_title_substr_hint"] = _input_title_substr_hint
+    other_data["input_airdate"] = input_airdate
+    other_data["hint_input_title_d"] = _hint_input_title_d
     other_data["cand_titles_c_tokenfreq"] = _cand_titles_c_tokenfreq
     other_data["other_titles_c_tokenfreq"] = _other_titles_c_tokenfreq
 
@@ -497,7 +501,7 @@ def match_to_episode(
         best_score, best_reason, best_match = max(results, key=lambda x: x[0])
 
     return {
-        "input": _main_title_d,
+        "input": _input_title_d,
         "matched_show": best_match.get("series") if best_match else None,
         "matched_series_id": best_match.get("series_id") if best_match else None,
         "season": best_match.get("season") if best_match else None,
@@ -511,69 +515,75 @@ def match_to_episode(
 
 
 def score_show_candidate(
-    show_title: str, show_id: int, main_title: str, input_tokens: set
+    cand_show_title: str, cand_show_id: int, input_title: str, input_tokens: set
 ) -> tuple[int, str, int, str]:
     score = 0
     reason = ""
 
-    processed_show = fuzzutils.default_process(show_title)
-    show_tokens = set(processed_show.split())
-    show_title_c = clean_text(show_title)
-    main_title_c = clean_text(main_title)
+    processed_cand_show = fuzzutils.default_process(cand_show_title)
+    cand_show_tokens = set(processed_cand_show.split())
+    cand_show_title_c = clean_text(cand_show_title)
+    input_title_c = clean_text(input_title)
     penalty_per_char = 2
 
-    if show_title == main_title:
+    if cand_show_title == input_title:
         reason += "verbatim match; "
         score += 100
-    if show_title.lower() == main_title.lower():
+    if cand_show_title.lower() == input_title.lower():
         reason += "case-insensitive match; "
         score += 95
-    elif show_title_c == main_title_c:
+    elif cand_show_title_c == input_title_c:
         reason += "strip match; "
         score += 90
     else:
-        if main_title in show_title:
+        if input_title in cand_show_title:
             reason += "candidate contains show title"
-            score += 80 - (len(show_title.replace(main_title, "")) * penalty_per_char)
-        elif main_title_c in show_title_c:
+            score += 80 - (
+                len(cand_show_title.replace(input_title, "")) * penalty_per_char
+            )
+        elif input_title_c in cand_show_title_c:
             reason += "(clean) candidate contains show title"
             score += 70 - (
-                len(show_title_c.replace(main_title_c, "")) * penalty_per_char
+                len(cand_show_title_c.replace(input_title_c, "")) * penalty_per_char
             )
-        elif show_title in main_title:
+        elif cand_show_title in input_title:
             reason += "show title contains candidate; "
-            score += 50 - (len(main_title.replace(show_title, "")) * penalty_per_char)
-        elif show_title_c in main_title_c:
+            score += 50 - (
+                len(input_title.replace(cand_show_title, "")) * penalty_per_char
+            )
+        elif cand_show_title_c in input_title_c:
             reason += "(cleaned) show title contains candidate; "
             score += 40 - (
-                len(main_title_c.replace(show_title_c, "")) * penalty_per_char
+                len(input_title_c.replace(cand_show_title_c, "")) * penalty_per_char
             )
 
-        if len(show_title) < 5:
+        if len(cand_show_title) < 5:
             reason += "short candidate, no verbatim match; "
-            score -= 50 + ((5 - len(show_title)) * penalty_per_char)
-        if processed_show in fuzzutils.default_process(main_title):
+            score -= 50 + ((5 - len(cand_show_title)) * penalty_per_char)
+        if processed_cand_show in fuzzutils.default_process(input_title):
             reason += "fuzzy match; "
-            score += 35 + len(main_title)
+            score += 35 + len(input_title)
 
         # Token similarity and keyword overlap
-        token_score = fuzz.token_set_ratio(main_title, show_title)
+        token_score = fuzz.token_set_ratio(input_title, cand_show_title)
         score += int(token_score * 0.10)
         reason += f"token set similarity: {token_score}; "
 
         keyword_overlap = (
-            len(show_tokens & input_tokens) / len(show_tokens) if show_tokens else 0
+            len(cand_show_tokens & input_tokens) / len(cand_show_tokens)
+            if cand_show_tokens
+            else 0
         )
         score += int(keyword_overlap * 50)
         reason += f"keyword overlap: {keyword_overlap}; "
 
     score = max(0, score)
-    return score, reason, show_id, show_title
+    return score, reason, cand_show_id, cand_show_title
 
 
-def match_to_show(main_title: str, sonarr_shows: list) -> Dict:
+def match_to_show(input_title: str, sonarr_shows: list) -> Dict:
     """Matches a streaming title to the best-matching Sonarr show using strict verbatim and token-based scoring."""
-    input_tokens = set(fuzzutils.default_process(main_title).split())
+    input_tokens = set(fuzzutils.default_process(input_title).split())
 
     best_title = None
     best_score = -1
@@ -585,9 +595,13 @@ def match_to_show(main_title: str, sonarr_shows: list) -> Dict:
     ) as executor:
         cand_scores = [
             executor.submit(
-                score_show_candidate, show_title, show_id, main_title, input_tokens
+                score_show_candidate,
+                cand_show_title,
+                cand_show_id,
+                input_title,
+                input_tokens,
             )
-            for show_title, show_id in set(sonarr_shows)
+            for cand_show_title, cand_show_id in set(sonarr_shows)
         ]
 
         results: list[tuple[int, str, int, str]] = []
@@ -597,7 +611,7 @@ def match_to_show(main_title: str, sonarr_shows: list) -> Dict:
         best_score, best_reason, best_id, best_title = max(results, key=lambda x: x[0])
 
     return {
-        "input": main_title,
+        "input": input_title,
         "matched_id": best_id,
         "matched_show": best_title,
         "score": best_score,
