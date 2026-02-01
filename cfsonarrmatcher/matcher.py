@@ -524,6 +524,9 @@ def score_show_candidate(
     cand_show_tokens = set(processed_cand_show.split())
     cand_show_title_c = clean_text(cand_show_title)
     input_title_c = clean_text(input_title)
+    cand_show_title_s = deep_strip_text(cand_show_title)
+    input_title_s = deep_strip_text(input_title)
+
     penalty_per_char = 2
 
     if cand_show_title == input_title:
@@ -533,8 +536,11 @@ def score_show_candidate(
         reason += "case-insensitive match; "
         score += 95
     elif cand_show_title_c == input_title_c:
-        reason += "strip match; "
+        reason += "clean match; "
         score += 90
+    elif cand_show_title_s == input_title_s:
+        reason += "deep strip match; "
+        score += 85
     else:
         if input_title in cand_show_title:
             reason += "candidate contains show title"
@@ -546,6 +552,11 @@ def score_show_candidate(
             score += 70 - (
                 len(cand_show_title_c.replace(input_title_c, "")) * penalty_per_char
             )
+        elif input_title_s in cand_show_title_s:
+            reason += "(strip) candidate contains show title"
+            score += 65 - (
+                len(cand_show_title_s.replace(input_title_s, "")) * penalty_per_char
+            )
         elif cand_show_title in input_title:
             reason += "show title contains candidate; "
             score += 50 - (
@@ -555,6 +566,11 @@ def score_show_candidate(
             reason += "(cleaned) show title contains candidate; "
             score += 40 - (
                 len(input_title_c.replace(cand_show_title_c, "")) * penalty_per_char
+            )
+        elif cand_show_title_s in input_title_s:
+            reason += "(strip) show title contains candidate; "
+            score += 35 - (
+                len(input_title_s.replace(cand_show_title_s, "")) * penalty_per_char
             )
 
         if len(cand_show_title) < 5:
