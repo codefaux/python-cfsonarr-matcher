@@ -518,20 +518,43 @@ def score_show_candidate(
 
     processed_show = fuzzutils.default_process(show_title)
     show_tokens = set(processed_show.split())
+    show_title_c = clean_text(show_title)
+    main_title_c = clean_text(main_title)
+    penalty_per_char = 2
 
-    if show_title.lower() in main_title.lower():
+    if show_title == main_title:
         reason += "verbatim match; "
         score += 100
-    elif clean_text(show_title) in clean_text(main_title):
+    if show_title.lower() == main_title.lower():
+        reason += "case-insensitive match; "
+        score += 95
+    elif show_title_c == main_title_c:
         reason += "strip match; "
-        score += 85
+        score += 90
     else:
+        if main_title in show_title:
+            reason += "candidate contains show title"
+            score += 80 - (len(show_title.replace(main_title, "")) * penalty_per_char)
+        elif main_title_c in show_title_c:
+            reason += "(clean) candidate contains show title"
+            score += 70 - (
+                len(show_title_c.replace(main_title_c, "")) * penalty_per_char
+            )
+        elif show_title in main_title:
+            reason += "show title contains candidate; "
+            score += 50 - (len(main_title.replace(show_title, "")) * penalty_per_char)
+        elif show_title_c in main_title_c:
+            reason += "(cleaned) show title contains candidate; "
+            score += 40 - (
+                len(main_title_c.replace(show_title_c, "")) * penalty_per_char
+            )
+
         if len(show_title) < 5:
             reason += "short candidate, no verbatim match; "
-            score -= 50 + (5 - len(show_title)) * 5
+            score -= 50 + ((5 - len(show_title)) * penalty_per_char)
         if processed_show in fuzzutils.default_process(main_title):
             reason += "fuzzy match; "
-            score += 35 + len(show_title)
+            score += 35 + len(main_title)
 
         # Token similarity and keyword overlap
         token_score = fuzz.token_set_ratio(main_title, show_title)
