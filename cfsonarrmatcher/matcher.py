@@ -8,7 +8,7 @@ import regex as re
 from dateutil import parser as dateparser
 from rapidfuzz import fuzz
 from rapidfuzz import utils as fuzzutils
-from unidecode import unidecode
+from unidecode import unidecode  # pyright: ignore[reportMissingImports]
 
 MATCHER_THREADS: int = int(os.getenv("MATCHER_THREADS") or 8)
 
