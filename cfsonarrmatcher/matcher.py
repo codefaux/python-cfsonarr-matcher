@@ -633,8 +633,13 @@ def match_to_show(
         # best_score, best_reason, best_id, best_title = max(results, key=lambda x: x[0])
         best_score = max(score for score, *_ in results)
         best_results = [
-            (score, reason, id_, title)
-            for score, reason, id_, title in results
+            {
+                "score": score,
+                "reason": reason,
+                "matched_id": matched_id,
+                "matched_show": matched_show,
+            }
+            for score, reason, matched_id, matched_show in results
             if score == best_score
         ]
 
