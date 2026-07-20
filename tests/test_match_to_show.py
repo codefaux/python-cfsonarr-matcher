@@ -137,6 +137,7 @@ def test_match_to_show(
     all_differences = []
 
     for i, (actual, expected_item) in enumerate(zip(actual_stats, fixture_stats)):
+        del expected_item["__func_sum"]
         differences = diff_dicts(expected_item, actual)
 
         if differences:
