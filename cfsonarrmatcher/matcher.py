@@ -2,13 +2,15 @@ import os
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
-from typing import Dict, List, Tuple
+from pathlib import Path
 
 import regex as re
 from dateutil import parser as dateparser
 from rapidfuzz import fuzz
 from rapidfuzz import utils as fuzzutils
 from unidecode import unidecode  # pyright: ignore[reportMissingImports]
+
+from .write_stats import write_stats
 
 MATCHER_THREADS: int = int(os.getenv("MATCHER_THREADS") or 8)
 
@@ -41,7 +43,7 @@ def date_distance_days(date1_input: str | date, date2_input: str | date) -> int:
 
 def time_distance_score(
     datetime1_input: str | datetime, datetime2_input: str | datetime
-) -> int:
+) -> float:
     from datetime import timezone
 
     max_hours_limit = 72
@@ -66,10 +68,10 @@ def time_distance_score(
     normalized = distance_hours / max_hours_limit
     score = (1 - normalized**decay_power) * max_score
 
-    return int(score)
+    return score
 
 
-def extract_episode_hint(title: str) -> Tuple[int, int, str]:
+def extract_episode_hint(title: str) -> tuple[int, int, str]:
     """Attempts to parse season and episode numbers from the title."""
     # Below should be redundant to compiled regex, now.
     # r"(?P<substring>S(?P<season_hint>\d+)[\W_]?-[\W_]?E?(?P<episode_hint>\d+))",  # S5 - 6
@@ -90,7 +92,7 @@ def extract_episode_hint(title: str) -> Tuple[int, int, str]:
     return -1, -1, ""
 
 
-def build_token_frequencies(token_pool: List[str]) -> Dict[str, int]:
+def build_token_frequencies(token_pool: list[str]) -> dict[str, int]:
     token_counts = Counter()
     for entry in token_pool:
         tokens = fuzzutils.default_process(entry).split()
@@ -114,8 +116,8 @@ def normalize_token(token: str) -> str:
 def compute_weighted_overlap(
     input_tokens: set,
     candidate_tokens: set,
-    candidate_freq_map: Dict[str, int],
-    input_freq_map: Dict[str, int] | None = None,
+    candidate_freq_map: dict[str, int],
+    input_freq_map: dict[str, int] | None = None,
 ) -> float:
     if not candidate_tokens:
         return 0.0
@@ -224,7 +226,9 @@ def dates_match(text1, text2):
     return not dates1.isdisjoint(dates2), dates1, dates2
 
 
-def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str, dict]:
+def score_episode_candidate(
+    cand_dict: dict, other_data: dict
+) -> tuple[float, str, dict]:
 
     # FUTURE - splitter for multi-episode
     # - strip known (title, creator, ep, hints, ...) from all, trim dangling symbols
@@ -393,13 +397,12 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
             reason += f"EXTRA TOKENS: {extra_tokens}"
 
             extra_penalty = len(extra_tokens) * 5
-            score -= int(extra_penalty)
-            reason += f"extra tokens: {len(extra_tokens)} (-{int(extra_penalty)}); "
+            score -= extra_penalty
+            reason += f"extra tokens: {len(extra_tokens)} (-{extra_penalty}); "
 
-            token_score = int(
-                fuzz.token_set_ratio(_input_title_c, _cand_title_c) * 0.25
-            )
-            weighted_recall = int(
+            token_score = fuzz.token_set_ratio(_input_title_c, _cand_title_c) * 0.25
+
+            weighted_recall = (
                 compute_weighted_overlap(
                     _input_title_c_tokens,
                     _cand_title_c_tokens,
@@ -408,16 +411,17 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
                 )
                 * 50
             )
+
             reason += f"old token set similarity: {token_score}; "
             reason += f"old weighted keyword recall: {weighted_recall}; "
 
-            token_score = int(
+            token_score = (
                 fuzz.token_set_ratio(list(_cand_pool), list(_input_pool)) * 0.25
             )
             _cand_pool_tokenfreq = build_token_frequencies(list(_cand_pool))
             _input_pool_tokenfreq = build_token_frequencies(list(_input_pool))
 
-            weighted_recall = int(
+            weighted_recall = (
                 compute_weighted_overlap(
                     _cand_pool,
                     _input_pool,
@@ -446,10 +450,11 @@ def score_episode_candidate(cand_dict: dict, other_data: dict) -> tuple[int, str
 def match_to_episode(
     input_title: str,
     input_airdate: str,
-    candidate_data: List[Dict],
-    input_titles: List[str] | None = None,
+    candidate_data: list[dict],
+    input_titles: list[str] | None = None,
     input_series: str | None = None,
-) -> Dict:
+    stats_path: Path | None = None,
+) -> dict:
     """Attempts to match a streaming title to a Sonarr entry with weighted keyword and date proximity scoring."""
 
     _input_title_d = unidecode(input_title.lower()).replace("  ", " ")
@@ -494,11 +499,14 @@ def match_to_episode(
             for __cand_c in _cand_data_c
         ]
 
-        results: list[tuple[int, str, dict]] = []
+        results: list[tuple[float, str, dict]] = []
         for _cand in as_completed(cand_scores):
             results.append(_cand.result())
 
         best_score, best_reason, best_match = max(results, key=lambda x: x[0])
+
+    if stats_path:
+        write_stats(stats_path)
 
     return {
         "input": _input_title_d,
@@ -516,7 +524,7 @@ def match_to_episode(
 
 def score_show_candidate(
     cand_show_title: str, cand_show_id: int, input_title: str, input_tokens: set
-) -> tuple[int, str, int, str]:
+) -> tuple[float, str, int, str]:
     score = 0
     reason = ""
 
@@ -580,31 +588,29 @@ def score_show_candidate(
             reason += "fuzzy match; "
             score += 35 + len(input_title)
 
-        # Token similarity and keyword overlap
-        token_score = fuzz.token_set_ratio(input_title, cand_show_title)
-        score += int(token_score * 0.10)
-        reason += f"token set similarity: {token_score}; "
+        keyword_overlap = len(cand_show_tokens & input_tokens) / len(cand_show_tokens)
 
-        keyword_overlap = (
-            len(cand_show_tokens & input_tokens) / len(cand_show_tokens)
-            if cand_show_tokens
-            else 0
-        )
-        score += int(keyword_overlap * 50)
+        token_score = fuzz.token_set_ratio(input_title, cand_show_title)
+
+        if keyword_overlap > 0:
+            # Token similarity and keyword overlap
+            score += token_score * 0.10
+            reason += f"token set similarity: {token_score}; "
+
+        score += keyword_overlap * 50
         reason += f"keyword overlap: {keyword_overlap}; "
 
     score = max(0, score)
     return score, reason, cand_show_id, cand_show_title
 
 
-def match_to_show(input_title: str, sonarr_shows: list) -> Dict:
+def match_to_show(
+    input_title: str, sonarr_shows: list, stats_path: Path | None = None
+) -> dict:
     """Matches a streaming title to the best-matching Sonarr show using strict verbatim and token-based scoring."""
     input_tokens = set(fuzzutils.default_process(input_title).split())
 
-    best_title = None
     best_score = -1
-    best_reason = ""
-    best_id = ""
 
     with ThreadPoolExecutor(
         max_workers=MATCHER_THREADS, thread_name_prefix="cfsonarr_matcher"
@@ -620,16 +626,23 @@ def match_to_show(input_title: str, sonarr_shows: list) -> Dict:
             for cand_show_title, cand_show_id in set(sonarr_shows)
         ]
 
-        results: list[tuple[int, str, int, str]] = []
+        results: list[tuple[float, str, int, str]] = []
         for _cand in as_completed(cand_scores):
             results.append(_cand.result())
 
-        best_score, best_reason, best_id, best_title = max(results, key=lambda x: x[0])
+        # best_score, best_reason, best_id, best_title = max(results, key=lambda x: x[0])
+        best_score = max(score for score, *_ in results)
+        best_results = [
+            (score, reason, id_, title)
+            for score, reason, id_, title in results
+            if score == best_score
+        ]
+
+    if stats_path:
+        write_stats(stats_path)
 
     return {
         "input": input_title,
-        "matched_id": best_id,
-        "matched_show": best_title,
-        "score": best_score,
-        "reason": best_reason,
+        "best_results": best_results,
+        "best_score": best_score,
     }
