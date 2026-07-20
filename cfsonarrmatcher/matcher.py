@@ -632,18 +632,24 @@ def match_to_show(
 
         # best_score, best_reason, best_id, best_title = max(results, key=lambda x: x[0])
         best_score = max(score for score, *_ in results)
-        best_results = sorted(
-            [
-                {
-                    "score": score,
-                    "reason": reason,
-                    "matched_id": matched_id,
-                    "matched_show": matched_show,
-                }
-                for score, reason, matched_id, matched_show in results
-                if score == best_score
-            ],
-            key=lambda x: x["matched_id"],
+        best_results = (
+            sorted(
+                [
+                    {
+                        "score": score,
+                        "reason": reason,
+                        "matched_id": matched_id,
+                        "matched_show": matched_show,
+                    }
+                    for score, reason, matched_id, matched_show in results
+                    if score == best_score
+                ],
+                key=lambda x: x["matched_id"],
+            )
+            if best_score > 5
+            else [
+                {"score": 0, "reason": "no match", "matched_id": -1, "matched_show": ""}
+            ]
         )
 
     if stats_path:
