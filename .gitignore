@@ -1,4 +1,4 @@
 build/**
 cfsonarrmatcher.egg-info/**
-.vscode/**
 cfsonarrmatcher/__pycache__/**
+.env

@@ -6,3 +6,14 @@ build-backend = "setuptools.build_meta"
 name = "cfsonarrmatcher"
 version = "0.4.14"
 dependencies = [ "unidecode", "rapidfuzz", "python-dateutil", "regex" ]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pyarr==5.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
